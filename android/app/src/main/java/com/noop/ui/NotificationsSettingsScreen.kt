@@ -447,23 +447,16 @@ fun NotificationsSettingsScreen(vm: AppViewModel, onOpenOtherApps: () -> Unit = 
             )
         }
 
-        // MARK: Other apps — the discovered-app picker lives on its own page (OtherAppsScreen),
-        // entered from here; the pill above already counts its picks.
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            PillButton(
-                label = uiString(R.string.l10n_notifications_settings_screen_open_other_apps_c1b6703a),
-                icon = Icons.Filled.Apps,
-                enabled = true,
-                onClick = onOpenOtherApps,
-            )
-        }
-
         // MARK: Behaviour card
         AlertSection(
             icon = Icons.Filled.Tune,
             title = uiString(R.string.l10n_notifications_settings_screen_behaviour_171ca038),
             blurb = "Fine-tune when alerts reach your wrist.",
         ) {
+            // The discovered-app picker lives on its own page (OtherAppsScreen); the pill on the
+            // master card already counts its picks.
+            OpenOtherAppsButton(onClick = onOpenOtherApps)
+            RowDivider()
             FormToggleRow(
                 label = uiString(R.string.l10n_notifications_settings_screen_only_buzz_when_worn_6211cee3),
                 help = "Skip alerts when the strap is off your wrist.",
@@ -1099,6 +1092,43 @@ private fun PatternMenu(
                 )
             }
         }
+    }
+}
+
+// MARK: - Open Other apps button (full-width entry into the discovered-app picker page)
+
+/**
+ * The Behaviour card's entry into [OtherAppsScreen]: a big full-width button, padded like the
+ * rows it sits beside. Bigger than the compact [PillButton] on purpose — it is the door to a
+ * whole page, not an inline action.
+ */
+@Composable
+private fun OpenOtherAppsButton(onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(Palette.accent.copy(alpha = 0.12f))
+            .border(1.dp, Palette.accent.copy(alpha = 0.30f), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(Icons.Filled.Apps, contentDescription = null, tint = Palette.accent, modifier = Modifier.size(20.dp))
+        Text(
+            uiString(R.string.l10n_notifications_settings_screen_open_other_apps_c1b6703a),
+            style = NoopType.body,
+            color = Palette.accent,
+        )
+        Spacer(Modifier.weight(1f))
+        Icon(
+            Icons.AutoMirrored.Filled.OpenInNew,
+            contentDescription = null,
+            tint = Palette.accent,
+            modifier = Modifier.size(15.dp),
+        )
     }
 }
 
