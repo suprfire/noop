@@ -161,12 +161,16 @@ internal object NotifPrefs {
     fun setAppPattern(ctx: Context, id: String, pattern: BuzzPattern) =
         prefs(ctx).edit().putString("app.$id.pattern", pattern.name).apply()
 
-    /** Every per-app wrist-alert opt-in persisted — the picks made on the Other apps page.
+    /** Every per-app wrist-alert opt-in persisted — the picks made on the App Notifications page.
      *  The Notifications header counts these, so the pill tells the truth about what will buzz. */
-    fun enabledAppCount(ctx: Context): Int =
-        prefs(ctx).all.entries.count { (key, value) ->
+    fun enabledAppCount(ctx: Context): Int = enabledAppPackages(ctx).size
+
+    /** The app packages the user has opted in. The App Notifications page pins these rows above
+     *  the search field for the whole visit, so the picks stay in sight. */
+    fun enabledAppPackages(ctx: Context): Set<String> =
+        prefs(ctx).all.entries.filter { (key, value) ->
             value == true && key.startsWith("app.") && key.endsWith(".enabled")
-        }
+        }.map { (key, _) -> key.removePrefix("app.").removeSuffix(".enabled") }.toSet()
 
     /** Buzz loop-count for [pkg] (for the notification listener; no NotifApp needed). Defaults to
      *  Double if no per-app pattern was chosen. */
@@ -659,9 +663,12 @@ private fun DeliveryNote() {
  * Notification Access grant carries their visibility, covering pre-API-33 targets that never
  * declare the permission).
  *
+ * Apps the user has already opted in are pinned above the search field for the whole visit, so
+ * their switches stay in sight; the snapshot is taken at entry, so toggling mid-visit never
+ * reorders the page.
+ *
  * The "All other apps" catch-all lives at the top of this page in its own section: with it on,
- * every app outside the curated catalog buzzes, so the per-app switches below are inert — the
- * page says so and dims the list. Rows reuse the same per-app prefs the notification listener
+ * every app buzzes, so the per-app switches below are inert — the page says so and dims the list. Rows reuse the same per-app prefs the notification listener
  * gates on — `app.<pkg>.enabled` / `app.<pkg>.pattern` — so a discovered app buzzes exactly
  * like a curated one, with its own pattern. The PackageManager walk runs off the main thread;
  * the list re-scans on demand.
@@ -677,6 +684,10 @@ fun OtherAppsScreen(vm: AppViewModel) {
     var scanning by remember { mutableStateOf(true) }
     var scanTick by remember { mutableStateOf(0) }
     var query by remember { mutableStateOf("") }
+    // Snapshot taken when the page opens: the apps already opted in. Positions are frozen for the
+    // visit — toggling mid-visit flips the switch where the row sits, it never reorders the page.
+    // Leaving and re-entering (or re-scanning after a reopen) re-takes the snapshot.
+    val pinnedAtEntry = remember { NotifPrefs.enabledAppPackages(context) }
     val enabledState = remember { mutableStateMapOf<String, Boolean>() }
     val patternState = remember { mutableStateMapOf<String, BuzzPattern>() }
     val iconState = remember { mutableStateMapOf<String, ImageBitmap>() }
@@ -702,7 +713,8 @@ fun OtherAppsScreen(vm: AppViewModel) {
         scanning = false
     }
 
-    val visible = apps.filter {
+    val pinned = apps.filter { it.packageName in pinnedAtEntry }
+    val visible = apps.filter { it.packageName !in pinnedAtEntry }.filter {
         query.isBlank() ||
             it.label.contains(query, ignoreCase = true) ||
             it.packageName.contains(query, ignoreCase = true)
@@ -744,6 +756,30 @@ fun OtherAppsScreen(vm: AppViewModel) {
                 modifier = Modifier.alphaIf(if (masterEnabled && !allOtherApps) 1f else Palette.disabledOpacity),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                // Apps already opted in when the page opened sit above the search field, always
+                // shown — the user's picks stay in sight instead of hiding in the scan list.
+                pinned.forEachIndexed { idx, app ->
+                    DiscoveredAppRow(
+                        app = app,
+                        enabled = enabledState[app.packageName] ?: false,
+                        pattern = patternState[app.packageName] ?: BuzzPattern.Double,
+                        icon = iconState[app.packageName],
+                        interactive = masterEnabled && !allOtherApps,
+                        bonded = live.bonded,
+                        dense = true,
+                        onToggle = { value ->
+                            enabledState[app.packageName] = value
+                            NotifPrefs.setAppEnabled(context, app.packageName, value)
+                        },
+                        onPattern = { pattern ->
+                            patternState[app.packageName] = pattern
+                            NotifPrefs.setAppPattern(context, app.packageName, pattern)
+                        },
+                        onTest = { vm.buzz(loops = (patternState[app.packageName] ?: BuzzPattern.Double).loops) },
+                    )
+                    if (idx < pinned.size - 1) RowDivider()
+                }
+                if (pinned.isNotEmpty()) RowDivider()
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
