@@ -2879,7 +2879,9 @@
     <string name="l10n_notifications_settings_screen_also_buzz_for_apps_not_listed_e60214ec">Vibriert auch für Apps, die nicht oben aufgelistet sind. NOOP entdeckt Apps, sobald sie dich benachrichtigen – eine App, die nie in der Liste oben erschien, vibriert damit ebenfalls. Kann viel sein; Ruhezeiten und „Nur vibrieren, wenn getragen“ gelten weiterhin.</string>
     <string name="l10n_notifications_settings_screen_notification_access_is_on_for_this_af3ffc72">Der Benachrichtigungszugriff ist für diese App aktiv. Alarme am Handgelenk können ankommen.</string>
     <string name="l10n_notifications_settings_screen_notification_access_is_off_for_this_1f56d5fe">Der Benachrichtigungszugriff ist für diese App deaktiviert. Öffne die Einstellungen unten und aktiviere NOOP Mod, sonst können keine Alarme am Handgelenk ankommen.</string>
-    <string name="l10n_notifications_settings_screen_when_all_other_apps_is_every_c4c82cee">Wenn Alle anderen Apps aktiviert ist, vibriert dein Handgelenk für jede App außerhalb der kuratierten Liste, also sind die einzelnen Schalter unten deaktiviert. Deaktiviere es, um Apps einzeln auszuwählen.</string>
+    <string name="l10n_notifications_settings_screen_when_all_other_apps_is_every_bf6e5671">Wenn Alle anderen Apps aktiviert ist, vibriert dein Handgelenk für jede App, also sind die einzelnen Schalter unten deaktiviert. Deaktiviere es, um Apps einzeln auszuwählen.</string>
     <string name="l10n_notifications_settings_screen_other_apps_notifications_8bcd3596">Benachrichtigungen anderer Apps</string>
     <string name="l10n_notifications_settings_screen_installed_apps_c21260b2">Installierte Apps</string>
+    <string name="l10n_notifications_settings_screen_app_notifications_00e65fd6">App-Benachrichtigungen</string>
+    <string name="l10n_notifications_settings_screen_choose_apps_72d037f2">Apps auswählen</string>
 </resources>

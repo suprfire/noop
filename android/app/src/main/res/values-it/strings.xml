@@ -2834,7 +2834,9 @@
     <string name="l10n_notifications_settings_screen_also_buzz_for_apps_not_listed_e60214ec">Vibra anche per le app non elencate sopra. NOOP scopre le app quando ti notificano, quindi un’app mai vista nell’elenco sopra vibrerà comunque con questa opzione. Può essere insistente; le ore di silenzio e «vibra solo quando indossato» si applicano comunque.</string>
     <string name="l10n_notifications_settings_screen_notification_access_is_on_for_this_af3ffc72">L\'accesso alle notifiche è attivo per questa app. Gli avvisi al polso possono arrivare.</string>
     <string name="l10n_notifications_settings_screen_notification_access_is_off_for_this_1f56d5fe">L\'accesso alle notifiche è disattivo per questa app. Apri le impostazioni qui sotto e attiva NOOP Mod, altrimenti gli avvisi al polso non possono arrivare.</string>
-    <string name="l10n_notifications_settings_screen_when_all_other_apps_is_every_c4c82cee">Quando Tutte le altre app è attivo, ogni app fuori dall\'elenco selezionato fa vibrare il polso, quindi gli interruttori individuali qui sotto sono disattivati. Disattivalo per scegliere le app una per una.</string>
+    <string name="l10n_notifications_settings_screen_when_all_other_apps_is_every_bf6e5671">Quando Tutte le altre app è attivo, ogni app fa vibrare il polso, quindi gli interruttori individuali qui sotto sono disattivati. Disattivalo per scegliere le app una per una.</string>
     <string name="l10n_notifications_settings_screen_other_apps_notifications_8bcd3596">Notifiche delle altre app</string>
     <string name="l10n_notifications_settings_screen_installed_apps_c21260b2">App installate</string>
+    <string name="l10n_notifications_settings_screen_app_notifications_00e65fd6">Notifiche delle app</string>
+    <string name="l10n_notifications_settings_screen_choose_apps_72d037f2">Scegli app</string>
 </resources>

@@ -2858,7 +2858,9 @@
     <string name="l10n_notifications_settings_screen_also_buzz_for_apps_not_listed_e60214ec">Também vibra para aplicações que não estão na lista acima. O NOOP deteta as aplicações quando te notificam, por isso uma aplicação que nunca viste na lista também vibra com isto ativo. Pode ser insistente; as horas de silêncio e «apenas vibra quando usado» continuam a aplicar-se.</string>
     <string name="l10n_notifications_settings_screen_notification_access_is_on_for_this_af3ffc72">O acesso às notificações está ativado para esta app. Os alertas no pulso podem chegar.</string>
     <string name="l10n_notifications_settings_screen_notification_access_is_off_for_this_1f56d5fe">O acesso às notificações está desativado para esta app. Abre as definições abaixo e ativa o NOOP Mod, ou os alertas no pulso não podem chegar.</string>
-    <string name="l10n_notifications_settings_screen_when_all_other_apps_is_every_c4c82cee">Quando Todas as outras apps está ativado, todas as apps fora da lista selecionada fazem vibrar o pulso, pelo que os interruptores individuais abaixo estão desativados. Desativa para escolher apps uma a uma.</string>
+    <string name="l10n_notifications_settings_screen_when_all_other_apps_is_every_bf6e5671">Quando Todas as outras apps está ativado, todas as apps fazem vibrar o pulso, pelo que os interruptores individuais abaixo estão desativados. Desativa para escolher apps uma a uma.</string>
     <string name="l10n_notifications_settings_screen_other_apps_notifications_8bcd3596">Notificações de outras apps</string>
     <string name="l10n_notifications_settings_screen_installed_apps_c21260b2">Apps instaladas</string>
+    <string name="l10n_notifications_settings_screen_app_notifications_00e65fd6">Notificações de apps</string>
+    <string name="l10n_notifications_settings_screen_choose_apps_72d037f2">Escolher apps</string>
 </resources>
