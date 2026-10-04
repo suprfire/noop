@@ -2896,4 +2896,6 @@
     <string name="l10n_notifications_settings_screen_scan_again_f6ab55dd">Scan again</string>
     <string name="l10n_notifications_settings_screen_no_apps_discovered_post_a_notification_0ca6e7bc">No apps discovered yet. Post a notification from an app, then scan again.</string>
     <string name="l10n_notifications_settings_screen_also_buzz_for_apps_not_listed_e60214ec">Also buzz for apps not listed above. NOOP discovers apps as they notify you, so an app you never saw in the list above still buzzes with this on. Can be chatty; quiet hours and the only-when-worn setting still apply.</string>
+    <string name="l10n_notifications_settings_screen_notification_access_is_on_for_this_af3ffc72">Notification Access is on for this app. Wrist alerts can arrive.</string>
+    <string name="l10n_notifications_settings_screen_notification_access_is_off_for_this_1f56d5fe">Notification Access is off for this app. Open the settings below and enable NOOP Mod, or wrist alerts cannot arrive.</string>
 </resources>

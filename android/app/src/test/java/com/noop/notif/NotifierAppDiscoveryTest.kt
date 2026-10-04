@@ -20,8 +20,8 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class NotifierAppDiscoveryTest {
 
-    private fun candidate(pkg: String, posts: Boolean = true, enabled: Boolean = true) =
-        NotifierCandidate(pkg, requestsPostNotifications = posts, enabled = enabled)
+    private fun candidate(pkg: String, posts: Boolean = true, enabled: Boolean = true, system: Boolean = false) =
+        NotifierCandidate(pkg, requestsPostNotifications = posts, enabled = enabled, systemApp = system)
 
     @Test
     fun `apps declaring the notification permission are offered`() {
@@ -78,6 +78,18 @@ class NotifierAppDiscoveryTest {
             selfPackage = "com.noop.whoop",
         )
         assertEquals(listOf("a.ok"), kept.map { it.packageName })
+    }
+
+    @Test
+    fun `system packages are not offered`() {
+        // FLAG_SYSTEM apps (OEM agents, bundled services, the launcher's own messaging stack) are
+        // not apps the user installed — the picker lists what the user installed, per the user's
+        // rule. A system app that declares POST_NOTIFICATIONS must still be dropped.
+        val kept = InstalledNotifierApps.filterNotifierCandidates(
+            listOf(candidate("com.acme.chat"), candidate("com.oem.agent", system = true)),
+            selfPackage = "com.noop.whoop",
+        )
+        assertEquals(listOf("com.acme.chat"), kept.map { it.packageName })
     }
 
     @Test

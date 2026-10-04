@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.provider.Settings
 
 /**
  * Discovery of apps that can notify this phone, backing the per-app wrist-alert picker.
@@ -12,9 +13,9 @@ import android.content.pm.PackageManager
  * single query the full picture:
  *
  *  1. [InstalledNotifierApps] asks the [PackageManager] for apps that declare POST_NOTIFICATIONS.
- *     The manifest's `<queries><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
- *     </queries>` entry grants visibility to exactly that set — no QUERY_ALL_PACKAGES, so the app
- *     stays Play-policy-clean.
+ *     The manifest's `<queries><intent MAIN/LAUNCHER/></queries>` entry grants visibility to every
+ *     launchable app; the filter keeps the ones declaring the notification permission. No
+ *     QUERY_ALL_PACKAGES, so the app stays Play-policy-clean.
  *  2. [NotifierAppDiscovery] persists every package the notification listener actually sees post.
  *     This catches apps targeting below API 33, which post notifications WITHOUT declaring
  *     POST_NOTIFICATIONS and are therefore invisible to query (1) — the same notification-access
@@ -50,6 +51,24 @@ object NotifierAppDiscovery {
             ?: emptySet()
 
     /**
+     * Is Notification Access granted to THIS app? The grant is per-app: installing NoopMod next to
+     * NOOP does not inherit the original app's grant, and without it the listener service is never
+     * bound — no wrist alert can arrive no matter what the picker has toggled. The settings screen
+     * shows this so a silent dead link reads as what it is.
+     */
+    fun notificationAccessGranted(ctx: Context): Boolean {
+        // The grant list is a ':'-separated flat of enabled listener components, readable on every
+        // API level NOOP supports (the "enabled_notification_listeners" Secure setting, API 22+).
+        // The API 29 NotificationManager accessor reads the same list; the flat covers minSdk 26
+        // through 35 in one path.
+        val flat = Settings.Secure.getString(ctx.contentResolver, "enabled_notification_listeners")
+            ?: return false
+        val selfComponent = android.content.ComponentName(ctx, NoopNotificationListener::class.java)
+            .flattenToString()
+        return flat.split(":").any { it == selfComponent }
+    }
+
+    /**
      * The picker list: installed apps that declare the notification permission, plus every
      * discovered poster that is installed — sorted by label. Discovered apps that were
      * uninstalled are dropped (their per-app prefs stay, so a reinstall keeps the user's choice).
@@ -64,6 +83,9 @@ object NotifierAppDiscovery {
             .mapNotNull { pkg ->
                 val info = runCatching { pm.getApplicationInfo(pkg, 0) }.getOrNull() ?: return@mapNotNull null
                 if (!info.enabled) return@mapNotNull null
+                // User-installed only: a system package that posts (OEM agent, bundled updater) is
+                // not an app the user installed — same FLAG_SYSTEM rule as the installed path.
+                if ((info.flags and ApplicationInfo.FLAG_SYSTEM) != 0) return@mapNotNull null
                 NotifierApp(pkg, labelOf(pm, info))
             }
         return (installed + discovered).sortedBy { it.label.lowercase() }
@@ -102,6 +124,7 @@ object InstalledNotifierApps {
                 requestsPostNotifications = info.requestedPermissions
                     ?.contains(POST_NOTIFICATIONS) == true,
                 enabled = info.applicationInfo?.enabled == true,
+                systemApp = (info.applicationInfo?.flags ?: 0) and ApplicationInfo.FLAG_SYSTEM != 0,
             )
         }
         return filterNotifierCandidates(candidates, selfPackage = ctx.packageName)
@@ -119,8 +142,9 @@ object InstalledNotifierApps {
     }
 
     /**
-     * Pure selection rule: keep apps that DECLARE the notification-posting permission and are
-     * ENABLED; drop NOOP's own package. Declaring POST_NOTIFICATIONS is the signal "this app can
+     * Pure selection rule: keep apps that DECLARE the notification-posting permission, are
+     * ENABLED, and are USER-INSTALLED (no FLAG_SYSTEM — OEM agents and bundled services are not
+     * apps the user installed); drop NOOP's own package. Declaring POST_NOTIFICATIONS is the signal "
      * notify you" — apps that never declare it and never posted are not offered; apps that post
      * without declaring (pre-API-33 targets) arrive through [NotifierAppDiscovery] instead.
      */
@@ -128,7 +152,9 @@ object InstalledNotifierApps {
         candidates: List<NotifierCandidate>,
         selfPackage: String,
     ): List<NotifierCandidate> =
-        candidates.filter { it.requestsPostNotifications && it.enabled && it.packageName != selfPackage }
+        candidates.filter {
+            it.requestsPostNotifications && it.enabled && !it.systemApp && it.packageName != selfPackage
+        }
 }
 
 /** Plain-data view of one installed package, for the pure filter. */
@@ -136,6 +162,7 @@ internal data class NotifierCandidate(
     val packageName: String,
     val requestsPostNotifications: Boolean,
     val enabled: Boolean,
+    val systemApp: Boolean = false,
 )
 
 /** User-visible app name. getApplicationLabel falls back to the package name when no label

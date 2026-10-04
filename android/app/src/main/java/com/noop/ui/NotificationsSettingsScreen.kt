@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
@@ -68,6 +69,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.noop.notif.CallAlertController
 import com.noop.notif.CallAlertSource
@@ -648,6 +650,13 @@ private fun CallsCard(
 @Composable
 private fun DeliveryNote() {
     val context = LocalContext.current
+    // The Notification Access grant is PER APP and can change while this screen is open (the user
+    // taps through to system settings and back), so re-check on every resume, not just first draw.
+    var accessGranted by remember { mutableStateOf(NotifierAppDiscovery.notificationAccessGranted(context)) }
+    LifecycleResumeEffect(Unit) {
+        accessGranted = NotifierAppDiscovery.notificationAccessGranted(context)
+        onPauseOrDispose { }
+    }
     val shape = RoundedCornerShape(10.dp)
     Column(
         modifier = Modifier
@@ -669,6 +678,30 @@ private fun DeliveryNote() {
                 uiString(R.string.l10n_notifications_settings_screen_wrist_delivery_needs_notification_access_so_2a14e784),
                 style = NoopType.footnote,
                 color = Palette.textSecondary,
+            )
+        }
+        // Live grant state: the #1 cause of "toggled the app, got nothing on the wrist" is this
+        // app not being granted (the grant is per app — a side-by-side NoopMod starts ungranted).
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(if (accessGranted) Palette.statusPositive else Palette.statusCritical),
+            )
+            Text(
+                uiString(
+                    if (accessGranted) {
+                        R.string.l10n_notifications_settings_screen_notification_access_is_on_for_this_af3ffc72
+                    } else {
+                        R.string.l10n_notifications_settings_screen_notification_access_is_off_for_this_1f56d5fe
+                    },
+                ),
+                style = NoopType.footnote,
+                color = if (accessGranted) Palette.statusPositive else Palette.statusCritical,
             )
         }
         Row(

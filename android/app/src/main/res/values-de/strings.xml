@@ -2878,4 +2878,6 @@
     <string name="l10n_notifications_settings_screen_scan_again_f6ab55dd">Erneut scannen</string>
     <string name="l10n_notifications_settings_screen_no_apps_discovered_post_a_notification_0ca6e7bc">Noch keine Apps entdeckt. Sende eine Benachrichtigung von einer App und scanne erneut.</string>
     <string name="l10n_notifications_settings_screen_also_buzz_for_apps_not_listed_e60214ec">Vibriert auch für Apps, die nicht oben aufgelistet sind. NOOP entdeckt Apps, sobald sie dich benachrichtigen – eine App, die nie in der Liste oben erschien, vibriert damit ebenfalls. Kann viel sein; Ruhezeiten und „Nur vibrieren, wenn getragen“ gelten weiterhin.</string>
+    <string name="l10n_notifications_settings_screen_notification_access_is_on_for_this_af3ffc72">Der Benachrichtigungszugriff ist für diese App aktiv. Alarme am Handgelenk können ankommen.</string>
+    <string name="l10n_notifications_settings_screen_notification_access_is_off_for_this_1f56d5fe">Der Benachrichtigungszugriff ist für diese App deaktiviert. Öffne die Einstellungen unten und aktiviere NOOP Mod, sonst können keine Alarme am Handgelenk ankommen.</string>
 </resources>

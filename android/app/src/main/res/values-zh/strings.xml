@@ -2835,4 +2835,6 @@
     <string name="l10n_notifications_settings_screen_scan_again_f6ab55dd">重新扫描</string>
     <string name="l10n_notifications_settings_screen_no_apps_discovered_post_a_notification_0ca6e7bc">尚未发现任何应用。从某个应用发送一条通知，然后重新扫描。</string>
     <string name="l10n_notifications_settings_screen_also_buzz_for_apps_not_listed_e60214ec">也会为上方未列出的应用震动。NOOP 会在应用通知你时发现它们，因此上方列表中从未出现的应用在开启此选项后也会震动。可能较频繁；静音时段和“仅在佩戴时震动”仍然适用。</string>
+    <string name="l10n_notifications_settings_screen_notification_access_is_on_for_this_af3ffc72">此应用已开启通知访问权限。手腕提醒可以送达。</string>
+    <string name="l10n_notifications_settings_screen_notification_access_is_off_for_this_1f56d5fe">此应用未开启通知访问权限。请在下方打开设置并启用 NOOP Mod，否则手腕提醒无法送达。</string>
 </resources>

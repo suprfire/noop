@@ -2865,4 +2865,6 @@
     <string name="l10n_notifications_settings_screen_scan_again_f6ab55dd">Volver a escanear</string>
     <string name="l10n_notifications_settings_screen_no_apps_discovered_post_a_notification_0ca6e7bc">Aún no se descubrieron aplicaciones. Envía una notificación desde una aplicación y vuelve a escanear.</string>
     <string name="l10n_notifications_settings_screen_also_buzz_for_apps_not_listed_e60214ec">Vibra también para aplicaciones que no están en la lista anterior. NOOP descubre las aplicaciones cuando te notifican, así que una aplicación que nunca viste en la lista también vibrará con esto activado. Puede ser pesado; las horas de silencio y «vibrar solo cuando se lleva puesta» siguen aplicando.</string>
+    <string name="l10n_notifications_settings_screen_notification_access_is_on_for_this_af3ffc72">El acceso a las notificaciones está activado para esta app. Las alertas de muñeca pueden llegar.</string>
+    <string name="l10n_notifications_settings_screen_notification_access_is_off_for_this_1f56d5fe">El acceso a las notificaciones está desactivado para esta app. Abre la configuración de abajo y activa NOOP Mod, o las alertas de muñeca no podrán llegar.</string>
 </resources>
