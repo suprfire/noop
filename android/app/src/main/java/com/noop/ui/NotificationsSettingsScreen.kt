@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -62,6 +63,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -69,6 +72,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.noop.notif.CallAlertController
@@ -764,13 +768,24 @@ fun OtherAppsScreen(vm: AppViewModel) {
     var query by remember { mutableStateOf("") }
     val enabledState = remember { mutableStateMapOf<String, Boolean>() }
     val patternState = remember { mutableStateMapOf<String, BuzzPattern>() }
+    val iconState = remember { mutableStateMapOf<String, ImageBitmap>() }
 
     LaunchedEffect(scanTick) {
         // getInstalledPackages(GET_PERMISSIONS) walks every visible package — IO thread, not the UI.
         val list = withContext(Dispatchers.IO) { NotifierAppDiscovery.load(context) }
+        // Real launcher icons, loaded off-thread in the same sweep (getApplicationIcon decodes
+        // every app's icon — a main-thread walk over dozens of apps would jank the page).
+        val icons = withContext(Dispatchers.IO) {
+            list.associate { app ->
+                app.packageName to runCatching {
+                    context.packageManager.getApplicationIcon(app.packageName).toBitmap(96, 96).asImageBitmap()
+                }.getOrNull()
+            }
+        }
         list.forEach { put ->
             enabledState.putIfAbsent(put.packageName, NotifPrefs.appEnabled(context, put.packageName))
             patternState.putIfAbsent(put.packageName, NotifPrefs.appPatternFor(context, put.packageName))
+            icons[put.packageName]?.let { iconState.putIfAbsent(put.packageName, it) }
         }
         apps = list
         scanned = true
@@ -783,7 +798,7 @@ fun OtherAppsScreen(vm: AppViewModel) {
     }
 
     ScreenScaffold(
-        title = uiString(R.string.l10n_notifications_settings_screen_other_apps_977376a2),
+        title = uiString(R.string.l10n_notifications_settings_screen_other_apps_notifications_8bcd3596),
         subtitle = uiString(R.string.l10n_notifications_settings_screen_apps_on_this_phone_that_can_6b7ae956),
     ) {
         // MARK: All other apps — the catch-all, in its own section at the top of the page.
@@ -812,7 +827,7 @@ fun OtherAppsScreen(vm: AppViewModel) {
         // covers every app below, so individual picks would promise nothing the catch-all doesn't.
         AlertSection(
             icon = Icons.Filled.Apps,
-            title = uiString(R.string.l10n_notifications_settings_screen_detected_apps_878d4b86),
+            title = uiString(R.string.l10n_notifications_settings_screen_installed_apps_c21260b2),
         ) {
             Column(
                 modifier = Modifier.alphaIf(if (masterEnabled && !allOtherApps) 1f else Palette.disabledOpacity),
@@ -848,6 +863,7 @@ fun OtherAppsScreen(vm: AppViewModel) {
                         app = app,
                         enabled = enabledState[app.packageName] ?: false,
                         pattern = patternState[app.packageName] ?: BuzzPattern.Double,
+                        icon = iconState[app.packageName],
                         interactive = masterEnabled && !allOtherApps,
                         bonded = live.bonded,
                         dense = true,
@@ -876,6 +892,7 @@ private fun DiscoveredAppRow(
     app: NotifierApp,
     enabled: Boolean,
     pattern: BuzzPattern,
+    icon: ImageBitmap? = null,
     interactive: Boolean,
     bonded: Boolean,
     dense: Boolean = false,
@@ -893,8 +910,9 @@ private fun DiscoveredAppRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Discovered apps have no curated glyph; the generic apps icon stands in for the real
-        // launcher icon (PackageManager exposes no cheap per-app icon here without extra loads).
+        // The app's REAL launcher icon, decoded off-thread at scan time (see the iconState sweep
+        // in OtherAppsScreen). The generic apps glyph stays as the fallback for the rare package
+        // whose icon refuses to decode.
         Box(
             modifier = Modifier
                 .size(if (dense) 28.dp else 34.dp)
@@ -902,16 +920,23 @@ private fun DiscoveredAppRow(
                 .background(Palette.surfaceInset),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Filled.Apps, contentDescription = null, tint = Palette.textSecondary, modifier = Modifier.size(if (dense) 15.dp else 18.dp))
+            if (icon != null) {
+                Image(
+                    bitmap = icon,
+                    contentDescription = app.label,
+                    modifier = Modifier.size(if (dense) 24.dp else 28.dp),
+                )
+            } else {
+                Icon(Icons.Filled.Apps, contentDescription = null, tint = Palette.textSecondary, modifier = Modifier.size(if (dense) 15.dp else 18.dp))
+            }
         }
 
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(app.label, style = NoopType.body, color = Palette.textPrimary)
-            Text(
-                if (enabled) "Buzzes your wrist" else "Off",
-                style = NoopType.footnote,
-                color = if (enabled) Palette.accent else Palette.textTertiary,
-            )
+            // The off state reads from the switch itself; only the on state gets the caption.
+            if (enabled) {
+                Text("Buzzes your wrist", style = NoopType.footnote, color = Palette.accent)
+            }
         }
 
         if (enabled) {
@@ -1118,7 +1143,7 @@ private fun OpenOtherAppsButton(onClick: () -> Unit) {
     ) {
         Icon(Icons.Filled.Apps, contentDescription = null, tint = Palette.accent, modifier = Modifier.size(20.dp))
         Text(
-            uiString(R.string.l10n_notifications_settings_screen_open_other_apps_c1b6703a),
+            uiString(R.string.l10n_notifications_settings_screen_other_apps_notifications_8bcd3596),
             style = NoopType.body,
             color = Palette.accent,
         )

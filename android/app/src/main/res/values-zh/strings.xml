@@ -2829,7 +2829,6 @@
     <string name="raw_diag_ecg_probe_running">此腕带上可能仍在采集。结论会写入 strap log。</string>
     <string name="today_customize_live_session_availability">在设置中启用Live Sessions 实时记录或有正在进行的训练时，今天会显示此部分。</string>
     <string name="l10n_app_changelog_today_your_way_heart_rate_any_5e1308b3">自定义「今天」页面、任何应用都能读取的心率，以及意大利语</string>
-    <string name="l10n_notifications_settings_screen_other_apps_977376a2">其他应用</string>
     <string name="l10n_notifications_settings_screen_apps_on_this_phone_that_can_6b7ae956">此手机上可以发送通知的应用。NOOP 会在它们通知你时发现它们——在下方逐一选择。</string>
     <string name="l10n_notifications_settings_screen_search_apps_ca3ce8f3">搜索应用</string>
     <string name="l10n_notifications_settings_screen_scan_again_f6ab55dd">重新扫描</string>
@@ -2837,7 +2836,7 @@
     <string name="l10n_notifications_settings_screen_also_buzz_for_apps_not_listed_e60214ec">也会为上方未列出的应用震动。NOOP 会在应用通知你时发现它们，因此上方列表中从未出现的应用在开启此选项后也会震动。可能较频繁；静音时段和“仅在佩戴时震动”仍然适用。</string>
     <string name="l10n_notifications_settings_screen_notification_access_is_on_for_this_af3ffc72">此应用已开启通知访问权限。手腕提醒可以送达。</string>
     <string name="l10n_notifications_settings_screen_notification_access_is_off_for_this_1f56d5fe">此应用未开启通知访问权限。请在下方打开设置并启用 NOOP Mod，否则手腕提醒无法送达。</string>
-    <string name="l10n_notifications_settings_screen_open_other_apps_c1b6703a">打开其他应用</string>
-    <string name="l10n_notifications_settings_screen_detected_apps_878d4b86">检测到的应用</string>
     <string name="l10n_notifications_settings_screen_when_all_other_apps_is_every_c4c82cee">开启“所有其他应用”后，精选列表之外的每个应用都会震动你的手腕，因此下方的单独开关不可用。关闭后可逐个选择应用。</string>
+    <string name="l10n_notifications_settings_screen_other_apps_notifications_8bcd3596">其他应用通知</string>
+    <string name="l10n_notifications_settings_screen_installed_apps_c21260b2">已安装的应用</string>
 </resources>
