@@ -2898,4 +2898,7 @@
     <string name="l10n_notifications_settings_screen_also_buzz_for_apps_not_listed_e60214ec">Also buzz for apps not listed above. NOOP discovers apps as they notify you, so an app you never saw in the list above still buzzes with this on. Can be chatty; quiet hours and the only-when-worn setting still apply.</string>
     <string name="l10n_notifications_settings_screen_notification_access_is_on_for_this_af3ffc72">Notification Access is on for this app. Wrist alerts can arrive.</string>
     <string name="l10n_notifications_settings_screen_notification_access_is_off_for_this_1f56d5fe">Notification Access is off for this app. Open the settings below and enable NOOP Mod, or wrist alerts cannot arrive.</string>
+    <string name="l10n_notifications_settings_screen_open_other_apps_c1b6703a">Open other apps</string>
+    <string name="l10n_notifications_settings_screen_detected_apps_878d4b86">Detected apps</string>
+    <string name="l10n_notifications_settings_screen_when_all_other_apps_is_every_c4c82cee">When All other apps is on, every app outside the curated list buzzes your wrist, so the individual switches below are off. Turn it off to pick apps one by one.</string>
 </resources>

@@ -2883,4 +2883,7 @@
     <string name="l10n_notifications_settings_screen_also_buzz_for_apps_not_listed_e60214ec">Brzęczy także dla aplikacji niewymienionych powyżej. NOOP odkrywa aplikacje, gdy Cię powiadamiają, więc aplikacja niewidziana na liście też będzie brzęczeć z tą opcją. Może bywać gadatliwe; godziny ciszy i „brzęczą tylko podczas noszenia” nadal obowiązują.</string>
     <string name="l10n_notifications_settings_screen_notification_access_is_on_for_this_af3ffc72">Dostęp do powiadomień jest włączony dla tej aplikacji. Alerty na nadgarstku mogą docierać.</string>
     <string name="l10n_notifications_settings_screen_notification_access_is_off_for_this_1f56d5fe">Dostęp do powiadomień jest wyłączony dla tej aplikacji. Otwórz ustawienia poniżej i włącz NOOP Mod, inaczej alerty na nadgarstku nie dotrą.</string>
+    <string name="l10n_notifications_settings_screen_open_other_apps_c1b6703a">Otwórz inne aplikacje</string>
+    <string name="l10n_notifications_settings_screen_detected_apps_878d4b86">Wykryte aplikacje</string>
+    <string name="l10n_notifications_settings_screen_when_all_other_apps_is_every_c4c82cee">Gdy Wszystkie inne aplikacje jest włączone, każda aplikacja spoza listy wibruje na nadgarstku, więc pojedyncze przełączniki poniżej są wyłączone. Wyłącz, aby wybierać aplikacje pojedynczo.</string>
 </resources>

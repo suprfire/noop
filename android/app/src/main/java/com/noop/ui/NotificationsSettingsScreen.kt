@@ -215,6 +215,15 @@ internal object NotifPrefs {
     fun setAppPattern(ctx: Context, id: String, pattern: BuzzPattern) =
         prefs(ctx).edit().putString("app.$id.pattern", pattern.name).apply()
 
+    /** Per-app opt-ins persisted for apps OUTSIDE [curatedIds] — the discovered "Other apps"
+     *  picks, which live on their own page. The Notifications header counts curated + discovered
+     *  together, so the pill tells the truth about what will buzz. */
+    fun enabledDiscoveredCount(ctx: Context, curatedIds: Set<String>): Int =
+        prefs(ctx).all.entries.count { (key, value) ->
+            value == true && key.startsWith("app.") && key.endsWith(".enabled") &&
+                key.removePrefix("app.").removeSuffix(".enabled") !in curatedIds
+        }
+
     /** Buzz loop-count for [pkg] (for the notification listener; no NotifApp needed). Defaults to
      *  Double if no per-app pattern was chosen. */
     fun appLoops(ctx: Context, pkg: String): Int {
@@ -246,14 +255,13 @@ internal object NotifPrefs {
 // MARK: - Screen
 
 @Composable
-fun NotificationsSettingsScreen(vm: AppViewModel) {
+fun NotificationsSettingsScreen(vm: AppViewModel, onOpenOtherApps: () -> Unit = {}) {
     val context = LocalContext.current
     val live by vm.live.collectAsStateWithLifecycle()
 
     // Header settings, seeded from prefs once and written through on change.
     var masterEnabled by remember { mutableStateOf(NotifPrefs.getBool(context, NotifPrefs.MASTER, false)) }
     var onlyWhenWorn by remember { mutableStateOf(NotifPrefs.getBool(context, NotifPrefs.WORN, true)) }
-    var allOtherApps by remember { mutableStateOf(NotifPrefs.getBool(context, NotifPrefs.ALL_OTHER, false)) }
     var quietHoursEnabled by remember { mutableStateOf(NotifPrefs.getBool(context, NotifPrefs.QUIET, false)) }
     var quietStartMinutes by remember { mutableStateOf(NotifPrefs.getInt(context, NotifPrefs.QUIET_START, 22 * 60)) }
     var quietEndMinutes by remember { mutableStateOf(NotifPrefs.getInt(context, NotifPrefs.QUIET_END, 7 * 60)) }
@@ -287,7 +295,16 @@ fun NotificationsSettingsScreen(vm: AppViewModel) {
             notifCatalog.forEach { put(it.id, NotifPrefs.appPattern(context, it)) }
         }
     }
-    val enabledCount = enabledState.values.count { it }
+    // The header pill counts every app that will buzz: the curated picks plus the discovered
+    // "Other apps" picks persisted on the Other apps page. SharedPreferences isn't reactive, so
+    // the discovered half is re-read on every resume — returning from that page updates the pill.
+    val curatedIds = remember { notifCatalog.map { it.id }.toSet() }
+    var discoveredEnabledCount by remember { mutableStateOf(NotifPrefs.enabledDiscoveredCount(context, curatedIds)) }
+    LifecycleResumeEffect(Unit) {
+        discoveredEnabledCount = NotifPrefs.enabledDiscoveredCount(context, curatedIds)
+        onPauseOrDispose { }
+    }
+    val enabledCount = enabledState.values.count { it } + discoveredEnabledCount
 
     ScreenScaffold(
         title = uiString(R.string.l10n_notifications_settings_screen_notifications_753a22b2),
@@ -430,15 +447,16 @@ fun NotificationsSettingsScreen(vm: AppViewModel) {
             )
         }
 
-        // MARK: Other apps — every notifier app discovered on this phone, per-app opt-in.
-        // Successor to the #168 catch-all's blind spot: apps that declare POST_NOTIFICATIONS are
-        // enumerable via the manifest's permission-shaped <queries> entry, and every app the
-        // listener has seen post is discovered too (Notification Access carries their visibility).
-        OtherAppsCard(
-            masterEnabled = masterEnabled,
-            bonded = live.bonded,
-            onTest = { loops -> vm.buzz(loops = loops) },
-        )
+        // MARK: Other apps — the discovered-app picker lives on its own page (OtherAppsScreen),
+        // entered from here; the pill above already counts its picks.
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            PillButton(
+                label = uiString(R.string.l10n_notifications_settings_screen_open_other_apps_c1b6703a),
+                icon = Icons.Filled.Apps,
+                enabled = true,
+                onClick = onOpenOtherApps,
+            )
+        }
 
         // MARK: Behaviour card
         AlertSection(
@@ -455,16 +473,8 @@ fun NotificationsSettingsScreen(vm: AppViewModel) {
                     NotifPrefs.setBool(context, NotifPrefs.WORN, it)
                 },
             )
-            RowDivider()
-            FormToggleRow(
-                label = uiString(R.string.l10n_notifications_settings_screen_all_other_apps_51a8af2c),
-                help = uiString(R.string.l10n_notifications_settings_screen_also_buzz_for_apps_not_listed_e60214ec),
-                checked = allOtherApps,
-                onChange = {
-                    allOtherApps = it
-                    NotifPrefs.setBool(context, NotifPrefs.ALL_OTHER, it)
-                },
-            )
+            // The "All other apps" catch-all moved to the top of the Other apps page, where it
+            // can explain what it does to the per-app picks below it.
             RowDivider()
             FormToggleRow(
                 label = uiString(R.string.l10n_notifications_settings_screen_quiet_hours_706b24d0),
@@ -731,26 +741,30 @@ private fun DeliveryNote() {
     }
 }
 
-// MARK: - Other apps (discovered notifier apps, per-app opt-in)
+// MARK: - Other apps page (discovered notifier apps, per-app opt-in)
 
 /**
- * The "Other apps" card: every app on this phone that can notify the user, discovered live
- * instead of curated. Sources merged by [NotifierAppDiscovery.load]: apps declaring
- * POST_NOTIFICATIONS (visible via the manifest's permission-shaped <queries> entry) plus every
- * app the notification listener has seen post (the Notification Access grant carries their
- * visibility, covering pre-API-33 targets that never declare the permission).
+ * The "Other apps" page: every app on this phone that can notify the user, discovered live
+ * instead of curated, entered from the Notifications screen via a button. Sources merged by
+ * [NotifierAppDiscovery.load]: apps declaring POST_NOTIFICATIONS (visible via the manifest's
+ * intent-shaped <queries> entry) plus every app the notification listener has seen post (the
+ * Notification Access grant carries their visibility, covering pre-API-33 targets that never
+ * declare the permission).
  *
- * Rows reuse the same per-app prefs the notification listener gates on — `app.<pkg>.enabled` /
- * `app.<pkg>.pattern` — so a discovered app buzzes exactly like a curated one, with its own
- * pattern. The PackageManager walk runs off the main thread; the list re-scans on demand.
+ * The "All other apps" catch-all lives at the top of this page in its own section: with it on,
+ * every app outside the curated catalog buzzes, so the per-app switches below are inert — the
+ * page says so and dims the list. Rows reuse the same per-app prefs the notification listener
+ * gates on — `app.<pkg>.enabled` / `app.<pkg>.pattern` — so a discovered app buzzes exactly
+ * like a curated one, with its own pattern. The PackageManager walk runs off the main thread;
+ * the list re-scans on demand.
  */
 @Composable
-private fun OtherAppsCard(
-    masterEnabled: Boolean,
-    bonded: Boolean,
-    onTest: (Int) -> Unit,
-) {
+fun OtherAppsScreen(vm: AppViewModel) {
     val context = LocalContext.current
+    val live by vm.live.collectAsStateWithLifecycle()
+
+    var masterEnabled by remember { mutableStateOf(NotifPrefs.getBool(context, NotifPrefs.MASTER, false)) }
+    var allOtherApps by remember { mutableStateOf(NotifPrefs.getBool(context, NotifPrefs.ALL_OTHER, false)) }
     var apps by remember { mutableStateOf<List<NotifierApp>>(emptyList()) }
     var scanned by remember { mutableStateOf(false) }
     var scanTick by remember { mutableStateOf(0) }
@@ -775,64 +789,93 @@ private fun OtherAppsCard(
             it.packageName.contains(query, ignoreCase = true)
     }
 
-    AlertSection(
-        icon = Icons.Filled.Apps,
+    ScreenScaffold(
         title = uiString(R.string.l10n_notifications_settings_screen_other_apps_977376a2),
-        blurb = uiString(R.string.l10n_notifications_settings_screen_apps_on_this_phone_that_can_6b7ae956),
+        subtitle = uiString(R.string.l10n_notifications_settings_screen_apps_on_this_phone_that_can_6b7ae956),
     ) {
-        Column(
-            modifier = Modifier.alphaIf(if (masterEnabled) 1f else Palette.disabledOpacity),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+        // MARK: All other apps — the catch-all, in its own section at the top of the page.
+        AlertSection(
+            icon = Icons.Filled.NotificationsActive,
+            title = uiString(R.string.l10n_notifications_settings_screen_all_other_apps_51a8af2c),
         ) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                singleLine = true,
-                placeholder = { Text(uiString(R.string.l10n_notifications_settings_screen_search_apps_ca3ce8f3), style = NoopType.body, color = Palette.textTertiary) },
-                label = { Text(uiString(R.string.l10n_notifications_settings_screen_search_apps_ca3ce8f3), style = NoopType.caption, color = Palette.textSecondary) },
-                colors = notifFieldColors(),
-                modifier = Modifier.fillMaxWidth(),
+            FormToggleRow(
+                label = uiString(R.string.l10n_notifications_settings_screen_all_other_apps_51a8af2c),
+                help = uiString(R.string.l10n_notifications_settings_screen_also_buzz_for_apps_not_listed_e60214ec),
+                checked = allOtherApps,
+                onChange = {
+                    allOtherApps = it
+                    NotifPrefs.setBool(context, NotifPrefs.ALL_OTHER, it)
+                },
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                PillButton(
-                    label = uiString(R.string.l10n_notifications_settings_screen_scan_again_f6ab55dd),
-                    icon = Icons.Filled.PlayArrow,
-                    enabled = masterEnabled,
-                    onClick = { scanTick++ },
+            RowDivider()
+            Text(
+                uiString(R.string.l10n_notifications_settings_screen_when_all_other_apps_is_every_c4c82cee),
+                style = NoopType.footnote,
+                color = Palette.textSecondary,
+            )
+        }
+
+        // MARK: Detected apps — dense per-app list. Inert while the catch-all is on: it already
+        // covers every app below, so individual picks would promise nothing the catch-all doesn't.
+        AlertSection(
+            icon = Icons.Filled.Apps,
+            title = uiString(R.string.l10n_notifications_settings_screen_detected_apps_878d4b86),
+        ) {
+            Column(
+                modifier = Modifier.alphaIf(if (masterEnabled && !allOtherApps) 1f else Palette.disabledOpacity),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    placeholder = { Text(uiString(R.string.l10n_notifications_settings_screen_search_apps_ca3ce8f3), style = NoopType.body, color = Palette.textTertiary) },
+                    label = { Text(uiString(R.string.l10n_notifications_settings_screen_search_apps_ca3ce8f3), style = NoopType.caption, color = Palette.textSecondary) },
+                    colors = notifFieldColors(),
+                    modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(Modifier.weight(1f))
-            }
-            if (visible.isEmpty()) {
-                Text(
-                    uiString(R.string.l10n_notifications_settings_screen_no_apps_discovered_post_a_notification_0ca6e7bc),
-                    style = NoopType.footnote,
-                    color = Palette.textTertiary,
-                )
-            }
-            visible.forEachIndexed { idx, app ->
-                DiscoveredAppRow(
-                    app = app,
-                    enabled = enabledState[app.packageName] ?: false,
-                    pattern = patternState[app.packageName] ?: BuzzPattern.Double,
-                    interactive = masterEnabled,
-                    bonded = bonded,
-                    onToggle = { value ->
-                        enabledState[app.packageName] = value
-                        NotifPrefs.setAppEnabled(context, app.packageName, value)
-                    },
-                    onPattern = { pattern ->
-                        patternState[app.packageName] = pattern
-                        NotifPrefs.setAppPattern(context, app.packageName, pattern)
-                    },
-                    onTest = { onTest((patternState[app.packageName] ?: BuzzPattern.Double).loops) },
-                )
-                if (idx < visible.size - 1) RowDivider()
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PillButton(
+                        label = uiString(R.string.l10n_notifications_settings_screen_scan_again_f6ab55dd),
+                        icon = Icons.Filled.PlayArrow,
+                        enabled = masterEnabled && !allOtherApps,
+                        onClick = { scanTick++ },
+                    )
+                    Spacer(Modifier.weight(1f))
+                }
+                if (visible.isEmpty()) {
+                    Text(
+                        uiString(R.string.l10n_notifications_settings_screen_no_apps_discovered_post_a_notification_0ca6e7bc),
+                        style = NoopType.footnote,
+                        color = Palette.textTertiary,
+                    )
+                }
+                visible.forEachIndexed { idx, app ->
+                    DiscoveredAppRow(
+                        app = app,
+                        enabled = enabledState[app.packageName] ?: false,
+                        pattern = patternState[app.packageName] ?: BuzzPattern.Double,
+                        interactive = masterEnabled && !allOtherApps,
+                        bonded = live.bonded,
+                        dense = true,
+                        onToggle = { value ->
+                            enabledState[app.packageName] = value
+                            NotifPrefs.setAppEnabled(context, app.packageName, value)
+                        },
+                        onPattern = { pattern ->
+                            patternState[app.packageName] = pattern
+                            NotifPrefs.setAppPattern(context, app.packageName, pattern)
+                        },
+                        onTest = { vm.buzz(loops = (patternState[app.packageName] ?: BuzzPattern.Double).loops) },
+                    )
+                    if (idx < visible.size - 1) RowDivider()
+                }
             }
         }
+        // `scanned` gates nothing visual today (the empty-state copy covers both pre/post scan);
+        // it stays read so a future "scanning…" affordance has its signal.
+        if (!scanned) Unit
     }
-    // `scanned` gates nothing visual today (the empty-state copy covers both pre/post scan);
-    // it stays read so a future "scanning…" affordance has its signal.
-    if (!scanned) Unit
 }
 
 @Composable
@@ -842,6 +885,7 @@ private fun DiscoveredAppRow(
     pattern: BuzzPattern,
     interactive: Boolean,
     bonded: Boolean,
+    dense: Boolean = false,
     onToggle: (Boolean) -> Unit,
     onPattern: (BuzzPattern) -> Unit,
     onTest: () -> Unit,
@@ -849,7 +893,7 @@ private fun DiscoveredAppRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .height(if (dense) 40.dp else 48.dp)
             .clip(RoundedCornerShape(10.dp))
             .then(if (enabled) Modifier.background(Palette.accentMuted) else Modifier)
             .padding(horizontal = 8.dp),
@@ -860,12 +904,12 @@ private fun DiscoveredAppRow(
         // launcher icon (PackageManager exposes no cheap per-app icon here without extra loads).
         Box(
             modifier = Modifier
-                .size(34.dp)
+                .size(if (dense) 28.dp else 34.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .background(Palette.surfaceInset),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Filled.Apps, contentDescription = null, tint = Palette.textSecondary, modifier = Modifier.size(18.dp))
+            Icon(Icons.Filled.Apps, contentDescription = null, tint = Palette.textSecondary, modifier = Modifier.size(if (dense) 15.dp else 18.dp))
         }
 
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {

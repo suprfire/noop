@@ -2762,4 +2762,7 @@
     <string name="l10n_notifications_settings_screen_also_buzz_for_apps_not_listed_e60214ec">Вибрировать также для приложений, которых нет в списке выше. NOOP обнаруживает приложения, когда они вас уведомляют, поэтому приложение, которого вы не видели в списке, тоже будет вибрировать с этим включённым. Может быть болтливым; тихие часы и «вибрировать, только когда браслет надет» по-прежнему действуют.</string>
     <string name="l10n_notifications_settings_screen_notification_access_is_on_for_this_af3ffc72">Доступ к уведомлениям включён для этого приложения. Оповещения на запястье могут приходить.</string>
     <string name="l10n_notifications_settings_screen_notification_access_is_off_for_this_1f56d5fe">Доступ к уведомлениям выключен для этого приложения. Откройте настройки ниже и включите NOOP Mod, иначе оповещения на запястье не смогут приходить.</string>
+    <string name="l10n_notifications_settings_screen_open_other_apps_c1b6703a">Открыть другие приложения</string>
+    <string name="l10n_notifications_settings_screen_detected_apps_878d4b86">Обнаруженные приложения</string>
+    <string name="l10n_notifications_settings_screen_when_all_other_apps_is_every_c4c82cee">Когда «Все другие приложения» включено, каждое приложение вне подобранного списка вибрирует на запястье, поэтому отдельные переключатели ниже неактивны. Выключите, чтобы выбирать приложения по одному.</string>
 </resources>

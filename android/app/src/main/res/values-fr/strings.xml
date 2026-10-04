@@ -2866,4 +2866,7 @@
     <string name="l10n_notifications_settings_screen_also_buzz_for_apps_not_listed_e60214ec">Vibre aussi pour les applications qui ne figurent pas dans la liste ci-dessus. NOOP découvre les applications dès qu’elles vous notifient — une application jamais vue dans la liste vibrera donc aussi avec cette option. Peut être bavard ; les heures silencieuses et « vibrer uniquement si porté » s’appliquent toujours.</string>
     <string name="l10n_notifications_settings_screen_notification_access_is_on_for_this_af3ffc72">L\'accès aux notifications est activé pour cette application. Les alertes au poignet peuvent arriver.</string>
     <string name="l10n_notifications_settings_screen_notification_access_is_off_for_this_1f56d5fe">L\'accès aux notifications est désactivé pour cette application. Ouvrez les réglages ci-dessous et activez NOOP Mod, sinon les alertes au poignet ne peuvent pas arriver.</string>
+    <string name="l10n_notifications_settings_screen_open_other_apps_c1b6703a">Ouvrir les autres applications</string>
+    <string name="l10n_notifications_settings_screen_detected_apps_878d4b86">Applications détectées</string>
+    <string name="l10n_notifications_settings_screen_when_all_other_apps_is_every_c4c82cee">Quand Toutes les autres applications est activé, chaque application hors de la liste sélectionnée fait vibrer votre poignet, donc les interrupteurs individuels ci-dessous sont désactivés. Désactivez-le pour choisir les applications une par une.</string>
 </resources>
