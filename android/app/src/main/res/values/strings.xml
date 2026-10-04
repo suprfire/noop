@@ -2902,4 +2902,5 @@
     <string name="l10n_notifications_settings_screen_installed_apps_c21260b2">Installed Apps</string>
     <string name="l10n_notifications_settings_screen_app_notifications_00e65fd6">App Notifications</string>
     <string name="l10n_notifications_settings_screen_choose_apps_72d037f2">Choose Apps</string>
+    <string name="l10n_notifications_settings_screen_scanning_installed_04ab2344">Scanning Installed Apps...</string>
 </resources>

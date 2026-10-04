@@ -649,10 +649,10 @@ private fun DeliveryNote() {
     }
 }
 
-// MARK: - Other apps page (discovered notifier apps, per-app opt-in)
+// MARK: - App Notifications page (discovered notifier apps, per-app opt-in)
 
 /**
- * The "Other apps" page: every app on this phone that can notify the user, discovered live
+ * The App Notifications page: every app on this phone that can notify the user, discovered live
  * instead of curated, entered from the Notifications screen via a button. Sources merged by
  * [NotifierAppDiscovery.load]: apps declaring POST_NOTIFICATIONS (visible via the manifest's
  * intent-shaped <queries> entry) plus every app the notification listener has seen post (the
@@ -674,7 +674,7 @@ fun OtherAppsScreen(vm: AppViewModel) {
     var masterEnabled by remember { mutableStateOf(NotifPrefs.getBool(context, NotifPrefs.MASTER, false)) }
     var allOtherApps by remember { mutableStateOf(NotifPrefs.getBool(context, NotifPrefs.ALL_OTHER, false)) }
     var apps by remember { mutableStateOf<List<NotifierApp>>(emptyList()) }
-    var scanned by remember { mutableStateOf(false) }
+    var scanning by remember { mutableStateOf(true) }
     var scanTick by remember { mutableStateOf(0) }
     var query by remember { mutableStateOf("") }
     val enabledState = remember { mutableStateMapOf<String, Boolean>() }
@@ -699,7 +699,7 @@ fun OtherAppsScreen(vm: AppViewModel) {
             icons[put.packageName]?.let { iconState.putIfAbsent(put.packageName, it) }
         }
         apps = list
-        scanned = true
+        scanning = false
     }
 
     val visible = apps.filter {
@@ -709,7 +709,7 @@ fun OtherAppsScreen(vm: AppViewModel) {
     }
 
     ScreenScaffold(
-        title = uiString(R.string.l10n_notifications_settings_screen_other_apps_notifications_8bcd3596),
+        title = uiString(R.string.l10n_notifications_settings_screen_app_notifications_00e65fd6),
         subtitle = uiString(R.string.l10n_notifications_settings_screen_apps_on_this_phone_that_can_6b7ae956),
     ) {
         // MARK: All other apps — the catch-all, in its own section at the top of the page.
@@ -762,7 +762,15 @@ fun OtherAppsScreen(vm: AppViewModel) {
                     )
                     Spacer(Modifier.weight(1f))
                 }
-                if (visible.isEmpty()) {
+                if (visible.isEmpty() && scanning) {
+                    // The scan starts the moment the page opens; until the PackageManager walk
+                    // lands, the list area shows this placeholder instead of an empty void.
+                    Text(
+                        uiString(R.string.l10n_notifications_settings_screen_scanning_installed_04ab2344),
+                        style = NoopType.footnote,
+                        color = Palette.textTertiary,
+                    )
+                } else if (visible.isEmpty()) {
                     Text(
                         uiString(R.string.l10n_notifications_settings_screen_no_apps_discovered_post_a_notification_0ca6e7bc),
                         style = NoopType.footnote,
@@ -792,9 +800,6 @@ fun OtherAppsScreen(vm: AppViewModel) {
                 }
             }
         }
-        // `scanned` gates nothing visual today (the empty-state copy covers both pre/post scan);
-        // it stays read so a future "scanning…" affordance has its signal.
-        if (!scanned) Unit
     }
 }
 

@@ -2887,4 +2887,5 @@
     <string name="l10n_notifications_settings_screen_installed_apps_c21260b2">Zainstalowane aplikacje</string>
     <string name="l10n_notifications_settings_screen_app_notifications_00e65fd6">Powiadomienia aplikacji</string>
     <string name="l10n_notifications_settings_screen_choose_apps_72d037f2">Wybierz aplikacje</string>
+    <string name="l10n_notifications_settings_screen_scanning_installed_04ab2344">Skanowanie zainstalowanych aplikacji…</string>
 </resources>

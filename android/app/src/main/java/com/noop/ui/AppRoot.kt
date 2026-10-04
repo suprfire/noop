@@ -190,7 +190,7 @@ internal enum class Destination(
     Notifications("notifications", R.string.nav_notifications, Icons.Filled.Notifications),
     // The discovered "Other apps" wrist-alert picker: reached ONLY from the Notifications screen's
     // button, so (like CoachSettings/StepsCalibration) it is deliberately absent from [drawerGroups].
-    OtherApps("other_apps", R.string.l10n_notifications_settings_screen_other_apps_notifications_8bcd3596, Icons.Filled.Apps),
+    OtherApps("other_apps", R.string.l10n_notifications_settings_screen_app_notifications_00e65fd6, Icons.Filled.Apps),
     PowerSaving("power_saving", R.string.nav_power_saving, Icons.Filled.BatteryStd),
     Settings("settings", R.string.nav_settings, Icons.Filled.Settings),
     // Experimental and intentionally absent from More: reachable only through Settings > Advanced.
