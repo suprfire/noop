@@ -23,7 +23,11 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.noop.whoop"
+        // NoopMod: a distinct applicationId so this build installs ALONGSIDE the original NOOP
+        // (com.noop.whoop) with its own data dir, its own Notification Access entry, and its own
+        // widget instances. The fileprovider authority derives from applicationId, so it moves
+        // with it; nothing in the code hardcodes the old id (verified by grep).
+        applicationId = "com.noop.whoop.mod"
         minSdk = 26
         targetSdk = 34
         versionCode = 554

@@ -137,6 +137,20 @@ WHOOP 5/MG history remains unsolved, and the cause is now established rather tha
 refuses the pairing handshake outright, so it is never given a clock, and an un-clocked 5/MG does not
 persist sensor data to flash. Its offloads complete empty. Live heart rate works; the backfill cannot,
 until the handshake does.
+## 11.8.1: Pick any app that notifies you (Android)
+
+**Wrist alerts, per app, for the whole phone**
+
+- **The "Other apps" card lists real installed notifier apps (#168 follow-up).** Wrist alerts used
+  to offer a curated list of nine common apps, with an "all other apps" catch-all for everything
+  else — because Android's package-visibility rules (API 30+) looked like they barred enumerating
+  apps. They don't: an app that declares the notification-posting permission is visible through a
+  permission-shaped `<queries>` entry, and every app the notification listener sees post is
+  discovered too (the Notification Access grant carries their visibility, which covers older apps
+  that never declare the permission). NOOP now enumerates both, merges them, and lets you toggle
+  each app's wrist buzz and pattern individually, with a search box. No QUERY_ALL_PACKAGES, no
+  network, no notification content read — package names only, on-device. The catch-all stays as
+  the default-off fallback for the moment an app notifies before you ever open the picker.
 
 ---
 

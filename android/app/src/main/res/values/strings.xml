@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">NOOP</string>
+    <!-- NoopMod: distinct launcher name so this build is tellable apart from the original NOOP
+         (com.noop.whoop) when both are installed side by side. -->
+    <string name="app_name">NOOP Mod</string>
     <string name="widget_description">Today\'s Rest, Charge and Effort, with live heart rate and strap battery at a glance.</string>
     <string name="widget_hr_name">NOOP Heart Rate</string>
     <string name="widget_hr_description">Live heart rate with the last three hours as a trace.</string>
@@ -2888,4 +2890,10 @@
     <string name="raw_diag_ecg_probe_running">A capture may still be running on this strap. The verdict goes to the strap log.</string>
     <string name="today_customize_live_session_availability">Appears today when Live Sessions is enabled in Settings or a session is active.</string>
     <string name="l10n_app_changelog_today_your_way_heart_rate_any_5e1308b3">Today your way, heart rate any app can read, and Italian</string>
+    <string name="l10n_notifications_settings_screen_other_apps_977376a2">Other apps</string>
+    <string name="l10n_notifications_settings_screen_apps_on_this_phone_that_can_6b7ae956">Apps on this phone that can post notifications. NOOP discovers them as they notify you — pick them one by one below.</string>
+    <string name="l10n_notifications_settings_screen_search_apps_ca3ce8f3">Search apps</string>
+    <string name="l10n_notifications_settings_screen_scan_again_f6ab55dd">Scan again</string>
+    <string name="l10n_notifications_settings_screen_no_apps_discovered_post_a_notification_0ca6e7bc">No apps discovered yet. Post a notification from an app, then scan again.</string>
+    <string name="l10n_notifications_settings_screen_also_buzz_for_apps_not_listed_e60214ec">Also buzz for apps not listed above. NOOP discovers apps as they notify you, so an app you never saw in the list above still buzzes with this on. Can be chatty; quiet hours and the only-when-worn setting still apply.</string>
 </resources>

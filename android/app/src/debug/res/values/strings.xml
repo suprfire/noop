@@ -7,5 +7,5 @@
   assembleFullDebug shows "NOOP Staging". Mirrors how the demo flavor labels itself "NOOP Demo".
 -->
 <resources>
-    <string name="app_name">NOOP Staging</string>
+    <string name="app_name">NOOP Mod Staging</string>
 </resources>

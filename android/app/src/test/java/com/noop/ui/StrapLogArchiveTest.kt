@@ -3,6 +3,7 @@ package com.noop.ui
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -23,6 +24,17 @@ class StrapLogArchiveTest {
     @get:Rule val folder = TemporaryFolder()
 
     private val t0Ms = 1_790_000_000_000L
+
+    /** POSIX file semantics: setWritable(false) must refuse writes, and a file open in this JVM
+     *  must be deletable. Windows honors neither, so the four tests exercising locked storage and
+     *  delete-while-open pruning are skipped there — the semantics are the OS contract, not the
+     *  archive's. */
+    private fun assumePosixFileSemantics() {
+        Assume.assumeFalse(
+            "POSIX file semantics (locked writes, delete-open-file) are not available on Windows",
+            System.getProperty("os.name").lowercase().contains("windows"),
+        )
+    }
 
     private fun process(dir: File, seconds: Long, budget: Long = StrapLogArchive.BUDGET_BYTES,
                         segment: Long = StrapLogArchive.SEGMENT_BYTES) =
@@ -71,11 +83,13 @@ class StrapLogArchiveTest {
 
     @Test
     fun oracleOldestPrunedAndTheClippedRunSaysSoAsIOSRendersIt() {
+        assumePosixFileSemantics()
         assertEquals(ORACLE_PRUNED, scenario(budget = 250))
     }
 
     @Test
     fun oracleLockedStorageAsIOSRendersIt() {
+        assumePosixFileSemantics()
         val (held, after) = lockedScenario()
         assertEquals(ORACLE_LOCKED_HELD, held)
         assertEquals(ORACLE_LOCKED_AFTER, after)
@@ -89,6 +103,7 @@ class StrapLogArchiveTest {
         val dir = folder.newFolder()
         try {
             dir.setWritable(false)
+            assumePosixFileSemantics()
             val locked = process(dir, 0, segment = 200)
             val early = (1..100).map { String.format(java.util.Locale.US, "locked %03d", it) }
             early.forEach(locked::append)
@@ -114,6 +129,7 @@ class StrapLogArchiveTest {
         val dir = folder.newFolder()
         try {
             dir.setWritable(false)
+            assumePosixFileSemantics()
             val locked = process(dir, 0, budget = 1_000, segment = 200)
             for (i in 1..200) locked.append(String.format(java.util.Locale.US, "locked %03d", i))
             val held = locked.exportText()
