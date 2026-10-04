@@ -663,9 +663,10 @@ private fun DeliveryNote() {
  * Notification Access grant carries their visibility, covering pre-API-33 targets that never
  * declare the permission).
  *
- * Apps the user has already opted in are pinned above the search field for the whole visit, so
- * their switches stay in sight; the snapshot is taken at entry, so toggling mid-visit never
- * reorders the page.
+ * Apps the user has already opted in are pinned above the search field for the whole visit, from
+ * the moment the page opens (their labels resolve in the first off-thread sweep, ahead of the full
+ * scan), so their switches stay in sight; the snapshot is taken at entry, so toggling mid-visit
+ * never reorders the page.
  *
  * The "All other apps" catch-all lives at the top of this page in its own section: with it on,
  * every app buzzes, so the per-app switches below are inert — the page says so and dims the list. Rows reuse the same per-app prefs the notification listener
@@ -688,11 +689,38 @@ fun OtherAppsScreen(vm: AppViewModel) {
     // visit — toggling mid-visit flips the switch where the row sits, it never reorders the page.
     // Leaving and re-entering (or re-scanning after a reopen) re-takes the snapshot.
     val pinnedAtEntry = remember { NotifPrefs.enabledAppPackages(context) }
-    val enabledState = remember { mutableStateMapOf<String, Boolean>() }
-    val patternState = remember { mutableStateMapOf<String, BuzzPattern>() }
+    // The opted-in rows resolved straight from prefs at entry: their labels land in the first
+    // off-thread sweep, so the pinned band shows BEFORE the full scan finishes and stays after it.
+    var pinnedSeed by remember { mutableStateOf<List<NotifierApp>>(emptyList()) }
+    val enabledState = remember {
+        mutableStateMapOf<String, Boolean>().apply {
+            pinnedAtEntry.forEach { put(it, NotifPrefs.appEnabled(context, it)) }
+        }
+    }
+    val patternState = remember {
+        mutableStateMapOf<String, BuzzPattern>().apply {
+            pinnedAtEntry.forEach { put(it, NotifPrefs.appPatternFor(context, it)) }
+        }
+    }
     val iconState = remember { mutableStateMapOf<String, ImageBitmap>() }
 
     LaunchedEffect(scanTick) {
+        // Opted-in apps first: labels + icons for the pinned band resolve in this quick sweep, so
+        // the user's picks are on screen before the full scan lands.
+        val seed = withContext(Dispatchers.IO) {
+            pinnedAtEntry.mapNotNull { NotifierAppDiscovery.appFor(context, it) }
+        }
+        val seedIcons = withContext(Dispatchers.IO) {
+            seed.associate { app ->
+                app.packageName to runCatching {
+                    context.packageManager.getApplicationIcon(app.packageName).toBitmap(96, 96).asImageBitmap()
+                }.getOrNull()
+            }
+        }
+        pinnedSeed = seed
+        seed.forEach { app ->
+            seedIcons[app.packageName]?.let { iconState.putIfAbsent(app.packageName, it) }
+        }
         // getInstalledPackages(GET_PERMISSIONS) walks every visible package — IO thread, not the UI.
         val list = withContext(Dispatchers.IO) { NotifierAppDiscovery.load(context) }
         // Real launcher icons, loaded off-thread in the same sweep (getApplicationIcon decodes
@@ -713,7 +741,11 @@ fun OtherAppsScreen(vm: AppViewModel) {
         scanning = false
     }
 
-    val pinned = apps.filter { it.packageName in pinnedAtEntry }
+    // Pinned band: the opted-in apps from the prefs snapshot at entry. Before the scan lands the
+    // rows come from [pinnedSeed]; after it, from the scanned list (same rows, richer data).
+    val pinned = pinnedSeed.sortedBy { it.label.lowercase() }.map { seed ->
+        apps.firstOrNull { it.packageName == seed.packageName } ?: seed
+    }
     val visible = apps.filter { it.packageName !in pinnedAtEntry }.filter {
         query.isBlank() ||
             it.label.contains(query, ignoreCase = true) ||
@@ -756,8 +788,9 @@ fun OtherAppsScreen(vm: AppViewModel) {
                 modifier = Modifier.alphaIf(if (masterEnabled && !allOtherApps) 1f else Palette.disabledOpacity),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                // Apps already opted in when the page opened sit above the search field, always
-                // shown — the user's picks stay in sight instead of hiding in the scan list.
+                // Apps already opted in when the page opened sit above the search field, shown from
+                // the moment the page opens (labels resolve in the first off-thread sweep) — they
+                // don't wait for the full scan, and they stay visible after it.
                 pinned.forEachIndexed { idx, app ->
                     DiscoveredAppRow(
                         app = app,

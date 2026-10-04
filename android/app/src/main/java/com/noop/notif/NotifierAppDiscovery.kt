@@ -51,6 +51,18 @@ object NotifierAppDiscovery {
             ?: emptySet()
 
     /**
+     * Resolve one package to its picker row (label included), or null when it is not installed
+     * (or disabled). The App Notifications page uses this to show the opted-in apps the moment it
+     * opens, ahead of the full scan. Read OFF the main thread — getApplicationInfo crosses IPC.
+     */
+    fun appFor(ctx: Context, packageName: String): NotifierApp? {
+        val pm = ctx.packageManager
+        val info = runCatching { pm.getApplicationInfo(packageName, 0) }.getOrNull() ?: return null
+        if (!info.enabled) return null
+        return NotifierApp(packageName, labelOf(pm, info))
+    }
+
+    /**
      * Is Notification Access granted to THIS app? The grant is per-app: installing NoopMod next to
      * NOOP does not inherit the original app's grant, and without it the listener service is never
      * bound — no wrist alert can arrive no matter what the picker has toggled. The settings screen
