@@ -17,6 +17,22 @@ approximate; downloads are on the [Releases](https://github.com/NoopApp/noop/rel
 
 ---
 
+## 12.0.2 (NoopMod): Home cards follow a sleep edit (Android)
+
+**Today stops showing the pre-edit night**
+
+- **A bed/wake correction, sleep delete, undo, re-detect, or added nap now persists and re-scores
+  even after leaving the Sleep screen.** The Sleep screen ran these writes on the composition's own
+  coroutine scope, so navigating back to Today the moment you saved cancelled the coroutine
+  mid-flight: the durable write and the immediate re-score never ran, and the home page's Sleep
+  card (and Rest caption) kept the pre-edit total until the 15-minute background loop caught up.
+  The Sleep tab itself looked correct because it applies the change optimistically in memory —
+  which is exactly why the two screens disagreed. The writes now run on the ViewModel's scope,
+  which outlives the screen. The same fix covers the Hydration card, whose log/undo writes were
+  cancelled the same way.
+
+---
+
 ## 12.0.1 (NoopMod): Pick any app that notifies you (Android)
 
 **Wrist alerts, per app, for the whole phone**

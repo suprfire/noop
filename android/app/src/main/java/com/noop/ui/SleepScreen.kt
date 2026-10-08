@@ -74,6 +74,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
 import com.noop.analytics.AnalyticsEngine
 import com.noop.analytics.CircadianEngine
 import com.noop.analytics.HypnogramCoverage
@@ -623,7 +624,9 @@ fun SleepScreen(
                     undo = undo,
                     onUndo = {
                         sleepUndo = null
-                        scope.launch {
+                        // viewModelScope: the restore + rescore must survive leaving the screen (see
+                        // onUpdateTimes) — a cancelled rescore leaves Today without the restored night.
+                        vm.viewModelScope.launch {
                             vm.undoDeleteSleepSessions(undo.sessions)
                             // Re-read so the restored night reappears in the ◀/▶ browse. Same
                             // active∪canonical union as the main loader (#814/#1008), so the undo
@@ -665,7 +668,9 @@ fun SleepScreen(
                     onRecompute = { marker ->
                         val key = marker.deviceId to marker.startTs
                         recomputingSleep = key
-                        scope.launch {
+                        // viewModelScope: the tombstone lift + rescore must survive leaving the screen
+                        // (see onUpdateTimes) — a cancelled rescore re-detects nothing until the 15-min loop.
+                        vm.viewModelScope.launch {
                             val cleared = vm.recomputeDeletedSleep(marker)
                             dismissedSleeps = runCatching {
                                 vm.repo.dismissedSleepsUnion(vm.activeStrapId)
@@ -841,7 +846,10 @@ fun SleepScreen(
                             if (plan.dropped.isNotEmpty()) {
                                 sleepUndo = SleepUndoState(plan.dropped, fromEdit = true)
                             }
-                            scope.launch { vm.updateSleepGroupTimes(group, safeStart, safeEnd) }
+                            // viewModelScope, NOT the composition scope: navigating home right after
+                            // saving cancels a composition-scoped coroutine mid-persist, so the durable
+                            // write + rescore never run and Today keeps the pre-edit sleep total.
+                            vm.viewModelScope.launch { vm.updateSleepGroupTimes(group, safeStart, safeEnd) }
                         }
                     } else {
                         // The clamp refused a future/inverted window. Never drop an edit silently (the nap
@@ -862,7 +870,9 @@ fun SleepScreen(
                     // everything undo needs to restore it into the original namespace.
                     sleeps = sleeps.filterNot { it.deviceId == s.deviceId && it.startTs == s.startTs }
                     sleepUndo = SleepUndoState(listOf(s), fromEdit = false)
-                    scope.launch {
+                    // viewModelScope: the delete + rescore must survive leaving the screen (see
+                    // onUpdateTimes) — a cancelled rescore leaves Today showing the deleted night.
+                    vm.viewModelScope.launch {
                         vm.deleteSleepSession(s)
                         dismissedSleeps = runCatching {
                             vm.repo.dismissedSleepsUnion(vm.activeStrapId)
@@ -873,7 +883,9 @@ fun SleepScreen(
                     // Persist the new nap as its OWN session (#508); reload `sleeps` afterwards so the
                     // new block shows in the ◀/▶ browse without waiting for a sync. We don't optimistically
                     // insert here because the stages are staged from raw off the UI thread.
-                    scope.launch {
+                    // viewModelScope: the nap write + rescore must survive leaving the screen (see
+                    // onUpdateTimes) — a cancelled rescore leaves Today missing the nap.
+                    vm.viewModelScope.launch {
                         vm.addManualNap(startTs, endTs)
                         sleeps = runCatching {
                             val now = System.currentTimeMillis() / 1000L

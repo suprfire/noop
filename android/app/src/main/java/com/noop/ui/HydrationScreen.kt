@@ -56,6 +56,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
 import com.noop.analytics.HydrationGoal
 import com.noop.analytics.HydrationStore
 import kotlinx.coroutines.launch
@@ -142,7 +143,9 @@ fun HydrationScreen(viewModel: AppViewModel) {
     var showCustom by remember { mutableStateOf(false) }
 
     val log: (Int) -> Unit = { amount ->
-        scope.launch {
+        // viewModelScope, not the composition scope: leaving the screen right after logging cancels a
+        // composition-scoped coroutine mid-write, so the Today hydration card keeps the old total.
+        viewModel.viewModelScope.launch {
             runCatching { HydrationStore.log(viewModel.repo, amount) }
             if (amount > 0) lastLoggedMl = amount
             reloadTick += 1
@@ -150,7 +153,8 @@ fun HydrationScreen(viewModel: AppViewModel) {
     }
     // Remove [amount] ml from the day total (the undo / delete-a-log path, #798). Clears the pending undo.
     val remove: (Int) -> Unit = { amount ->
-        scope.launch {
+        // viewModelScope: same reason as [log] — the removal must survive leaving the screen.
+        viewModel.viewModelScope.launch {
             runCatching { HydrationStore.remove(viewModel.repo, amount) }
             lastLoggedMl = null
             reloadTick += 1
