@@ -803,6 +803,26 @@ object IntelligenceEngine {
         // `<= 0` / `< 18`, so the two platforms land on the identical floor.
         val sleepNeedHours = RestScorer.personalizedNeedHours(nightlyHours, profile.age.toInt())
 
+        // Learned night window for the daytime false-sleep guard: the fixed [11,20) clock band
+        // waves a pre-bedtime still block (21:00-23:00, seated, HR relaxing) through as "overnight"
+        // for anyone habitually asleep before ~22:00 — it then stitches onto the real night and
+        // poisons the day's physiology (the illness early-warning false fire over an evening film).
+        // Derive (bedtime, wake) from the SAME #547 learner that produced the midsleep above, plus
+        // the typical-night median (the identical BatteryEstimator derivation that gates the bedtime
+        // battery alert — one learned night, one definition of when it starts/ends). Cold-start
+        // (no learned midsleep, or under [BatteryEstimator.typicalSleepHours]'s min nights) stays
+        // null: no honest window to test against, and SleepStager keeps the fixed band byte-
+        // identically, exactly like bedtimeAlert's cold-start discipline.
+        val learnedNightSec: Pair<Long, Long>? = run {
+            val mid = habitualMidsleepSec ?: return@run null
+            val hours = BatteryEstimator.typicalSleepHours(nightlyHours) ?: return@run null
+            if (hours <= 0.0 || mid !in 0 until 86_400L) return@run null
+            val half = BatteryEstimator.halfNightSec(hours).toLong()
+            val bed = Math.floorMod(mid - half, 86_400L)
+            val wake = Math.floorMod(mid + half, 86_400L)
+            if (bed == wake) null else bed to wake
+        }
+
         // #970 read efficiency, skin-temp leg: [RegistryDayOwnerSource.skinTempFamily] resolves the family
         // via registry.all() — a Room query — and the loop below wants it once per DAY, so a 21-day scan
         // re-read the paired-devices table ~21× for what is almost always ONE owner. Swift never paid this:
@@ -1195,6 +1215,11 @@ object IntelligenceEngine {
                 useSleepStagerV2 = useExperimentalSleepV2,
                 // #364 follow-up: same threading for the motion-aware wake refinement post-pass.
                 useMotionAwareWake = useMotionAwareWake,
+                // Learned-timing daytime band (illness early-warning false-sleep fix): thread the
+                // (bedtime, wake) window computed once per run above into every day's detection, so
+                // the daytime guard places itself by the wearer's habitual night. null cold-start =
+                // fixed clock band, byte-identical.
+                learnedNightSec = learnedNightSec,
                 // #804 Fix A: the owner's own device-provided hypnogram (empty for WHOOP/non-ring days).
                 providedSleep = providedSleep,
                 // Sleep & Rest test mode (Test Centre E5): thread the trace sink straight through. null (the

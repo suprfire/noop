@@ -420,6 +420,13 @@ object AnalyticsEngine {
         // Threaded rather than read from a global so this stays a pure function, and defaulted so every
         // existing caller and test is byte-identical.
         effortMethod: StrainScorer.Method = StrainScorer.Method.EDWARDS,
+        // Learned habitual night as LOCAL seconds-of-day (bedtime, wake), derived by the caller from the
+        // SAME #547 learner that produces [habitualMidsleepSec] (bedtime = midsleep − half the typical
+        // night; wake = bedtime + the typical night). When non-null, the daytime false-sleep guard
+        // places its band by the wearer's learned timing instead of the fixed clock hours, so a
+        // pre-bedtime still block faces the nap bar rather than reading "overnight" past hour 20.
+        // null (cold start, pure callers, tests) keeps the fixed band byte-identically.
+        learnedNightSec: Pair<Long, Long>? = null,
     ): DayResult {
 
         // Precompute the day's UTC bounds ONCE (#996). isoDay is a FIXED-UTC formatter, so
@@ -437,6 +444,7 @@ object AnalyticsEngine {
             hr = hr, rr = rr, resp = resp, gravity = gravity, tzOffsetSeconds = tzOffsetSeconds,
             wristOff = wristOff, bandSleepState = bandSleepState,
             useSleepStagerV2 = useSleepStagerV2,
+            learnedNightSec = learnedNightSec,
             traceSink = traceSink,
         )
         // Motion-aware wake refinement (#364 follow-up) runs AFTER V1/V2 staging, over every detected
@@ -733,6 +741,59 @@ object AnalyticsEngine {
             }
         }
 
+        // ── Main-night-scoped physiology for the illness early-warning (v42) ────
+        // The pooled aggregates above deliberately cover ALL matched sessions (#525 note): Charge
+        // wants the body's best resting physiology, and the main overnight dominates anyway.
+        // IllnessWatch cannot use that pooling — it compares a day against its own baseline, so a
+        // phantom daytime session (a seated-movie still block read as sleep) dilutes the accusing
+        // day AND every baseline night it lands in, and the early warning fires at 22:30 over a
+        // film. The two values below re-derive the SAME statistics restricted to the main-night
+        // group (#525/#561 selection) that the sleep-duration figures already follow; daily RHR
+        // needs no twin because #2522 already takes it from the primary session. Persisted on the
+        // row (mainNightAvgHrv / mainNightRespRateBpm); IllnessWatch prefers them and falls back
+        // to the pooled column, so imported rows and pre-v42 rows keep today's behavior until a
+        // re-score writes these. A day whose pooled set already IS the main group (the common
+        // single-night night) reuses the computed value verbatim rather than recomputing it.
+        val mainNightPhysiology = physiologySessions.filter { p ->
+            mainGroup.any { it.start == p.start && it.end == p.end }
+        }
+        val mainNightAvgHrvScoped: Double? = when {
+            mainGroup.isEmpty() || mainNightPhysiology.isEmpty() -> null
+            mainNightPhysiology.size == physiologySessions.size &&
+                physiologySessions.all { p -> mainGroup.any { it.start == p.start && it.end == p.end } } ->
+                avgHRVDaily   // pooled set already IS the main group: byte-identical, no recompute
+            deepHrvWindow -> run {
+                val rrSorted = rr.sortedBy { it.ts }
+                val deep = mainNightPhysiology.flatMap { s ->
+                    SleepStager.sessionHrvWindows(s.start, s.end, rrSorted, s.stages)
+                        .filter { it.stage == "deep" }.mapNotNull { it.rmssd }
+                }
+                if (deep.isEmpty()) null else deep.sum() / deep.size
+            }
+            else -> run {
+                val pairs = mainNightPhysiology.mapNotNull { s ->
+                    s.avgHRV?.let { it to (s.end - s.start).toDouble() }
+                }
+                if (pairs.isEmpty()) null else {
+                    val total = pairs.sumOf { it.first * it.second }
+                    val weight = pairs.sumOf { it.second }
+                    if (weight > 0) total / weight else null
+                }
+            }
+        }
+        val mainNightRespScoped: Double? = run {
+            if (mainGroup.isEmpty()) return@run null
+            val vendor = vendorRespRateBpm(vendorResp, mainGroup.map { it.start to it.end })
+            if (vendor != null) {
+                vendor
+            } else {
+                val perSession = mainGroup
+                    .map { SleepStager.respRateFromRR(rr, it.start, it.end) }
+                    .filter { it.isFinite() }
+                if (perSession.isEmpty()) null else HrvAnalyzer.median(perSession)
+            }
+        }
+
         // sleepStart/sleepEnd available for callers wiring sleep_start/end columns.
         @Suppress("UNUSED_VARIABLE") val sleepStart = matched.minOfOrNull { it.start }
         @Suppress("UNUSED_VARIABLE") val sleepEnd = matched.maxOfOrNull { it.end }
@@ -994,6 +1055,10 @@ object AnalyticsEngine {
             // skinTempDevC, so the engine's own row is symmetric: any path that persists this
             // row directly keeps both thermal values, not just the one.
             skinTempC = nightlySkinTempC,
+            // Main-night-scoped illness physiology (v42) — see the block above respRateDaily for why
+            // these exist beside the pooled columns and why RHR needs no twin (#2522).
+            mainNightAvgHrv = mainNightAvgHrvScoped,
+            mainNightRespRateBpm = mainNightRespScoped,
         )
 
         // ── Per-score confidence tiers (mirror Swift ScoreConfidence.derive decisions) ──

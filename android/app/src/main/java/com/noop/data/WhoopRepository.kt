@@ -2834,6 +2834,10 @@ class WhoopRepository(
                 // Strap-only, like raw SpO2: an imported winner carries no absolute skin temp, so
                 // take the filler's rather than blank a value the strap did record (#1636).
                 skinTempC = winner.skinTempC ?: filler.skinTempC,
+                // Main-night-scoped illness physiology (v42): strap-only like skinTempC, and
+                // independent columns, so a plain per-column fill is safe.
+                mainNightAvgHrv = winner.mainNightAvgHrv ?: filler.mainNightAvgHrv,
+                mainNightRespRateBpm = winner.mainNightRespRateBpm ?: filler.mainNightRespRateBpm,
                 recovery = winner.recovery ?: filler.recovery,
                 strain = winner.strain ?: filler.strain,
                 exerciseCount = winner.exerciseCount ?: filler.exerciseCount,

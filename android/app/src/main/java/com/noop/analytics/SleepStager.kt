@@ -95,11 +95,18 @@ object SleepStager {
     /** Local hour (inclusive) at which the stricter daytime bar begins. */
     const val daytimeBandStartHour: Int = 11
 
-    /**
-     * Local hour (exclusive) at which the stricter daytime bar ends. A window whose center
+    /** Local hour (exclusive) at which the stricter daytime bar ends. A window whose center
      * is in [start, end) local hours is "daytime"; everything else is "overnight".
-     */
+     * This fixed band is the COLD-START fallback: once the app has learned the wearer's habitual
+     * night (the #547 learner), [detectSleep] places the band relative to the LEARNED bedtime/
+     * wake instead, so a pre-bedtime stretch (21:00-23:00 for someone asleep by 23:30) is not
+     * waved through as "overnight" just because it falls past hour 20. */
     const val daytimeBandEndHour: Int = 20
+
+    /** Grace (minutes) added to BOTH ends of the learned night window before a still block
+     *  counts as daytime. The learned bedtime is a median, not a schedule; ±1 h absorbs
+     *  going-to-bed early/late without re-opening the pre-bedtime false-sleep hole. */
+    const val learnedNightGraceMin: Int = 60
 
     /**
      * A still sleep run that resumes within this gap of an overnight sleep chain is the
@@ -1181,27 +1188,63 @@ object SleepStager {
 
     /**
      * True when the run's CENTER, shifted to LOCAL time by [tzOffsetSeconds], lands in the
-     * daytime band [daytimeBandStartHour, daytimeBandEndHour). The center (not the edges) is
-     * used so a window straddling a band edge is classified once, by where it mostly is.
-     * Math.floorMod keeps the local-shifted time in [0, secondsPerDay) for any sign.
+     * daytime band. The center (not the edges) is used so a window straddling a band edge is
+     * classified once, by where it mostly is. Math.floorMod keeps the local-shifted time in
+     * [0, secondsPerDay) for any sign.
+     *
+     * [learnedNight] = (bedtime, wake) as LOCAL seconds-of-day from the #547 learner: when present
+     * the band is the complement of the wearer's habitual night (± [learnedNightGraceMin]), so a
+     * still block at 21:30 for someone habitually asleep by 23:30 faces the daytime guard instead
+     * of reading "overnight" because it falls past hour 20. null / invalid → the fixed clock band,
+     * byte-identical to the pre-learned behavior (cold start, pure-function callers, tests).
      */
-    internal fun isDaytimeCenter(p: Period, tzOffsetSeconds: Long): Boolean {
+    internal fun isDaytimeCenter(
+        p: Period, tzOffsetSeconds: Long,
+        learnedNight: Pair<Long, Long>? = null,
+    ): Boolean {
         val center = p.start + (p.end - p.start) / 2
         val secOfDay = Math.floorMod(center + tzOffsetSeconds, secondsPerDay)
-        val hour = (secOfDay / 3_600L).toInt()
-        return hour >= daytimeBandStartHour && hour < daytimeBandEndHour
+        val (bandStart, bandEnd) = daytimeBandSecOfDay(learnedNight)
+        return inCircularBand(secOfDay, bandStart, bandEnd)
+    }
+
+    /** The daytime band as local seconds-of-day (start inclusive, end exclusive, measured forward
+     *  mod a day). Fixed clock hours unless a valid learned night is supplied. */
+    private fun daytimeBandSecOfDay(learnedNight: Pair<Long, Long>?): Pair<Long, Long> {
+        val bed = learnedNight?.first
+        val wake = learnedNight?.second
+        if (bed == null || wake == null ||
+            bed !in 0 until secondsPerDay || wake !in 0 until secondsPerDay || bed == wake
+        ) {
+            return daytimeBandStartHour * 3_600L to daytimeBandEndHour * 3_600L
+        }
+        val graceS = learnedNightGraceMin * 60L
+        return Math.floorMod(wake + graceS, secondsPerDay) to
+            Math.floorMod(bed - graceS, secondsPerDay)
+    }
+
+    /** True when [secOfDay] lies inside the circular half-open band [bandStart, bandEnd). For the
+     *  fixed band this is exactly the old `hour >= start && hour < end` test. */
+    private fun inCircularBand(secOfDay: Long, bandStart: Long, bandEnd: Long): Boolean {
+        val offset = Math.floorMod(secOfDay - bandStart, secondsPerDay)
+        val span = Math.floorMod(bandEnd - bandStart, secondsPerDay)
+        return offset < span
     }
 
     /**
      * True when a run's ONSET (start), in LOCAL time, falls OUTSIDE the daytime band — i.e. the
      * sleep began at night, not during the day. Anchors a continuous-sleep chain: only a chain
      * that began overnight may carry its tail past the daytime-band start (a late wake).
-     * Reimplemented from @vulnix0x4's PR #353.
+     * Reimplemented from @vulnix0x4's PR #353. [learnedNight] places the band by learned timing
+     * exactly as in [isDaytimeCenter]; null keeps the fixed clock band.
      */
-    internal fun isOvernightOnset(start: Long, tzOffsetSeconds: Long): Boolean {
+    internal fun isOvernightOnset(
+        start: Long, tzOffsetSeconds: Long,
+        learnedNight: Pair<Long, Long>? = null,
+    ): Boolean {
         val secOfDay = Math.floorMod(start + tzOffsetSeconds, secondsPerDay)
-        val hour = (secOfDay / 3_600L).toInt()
-        return !(hour >= daytimeBandStartHour && hour < daytimeBandEndHour)
+        val (bandStart, bandEnd) = daytimeBandSecOfDay(learnedNight)
+        return !inCircularBand(secOfDay, bandStart, bandEnd)
     }
 
     /**
@@ -1444,6 +1487,7 @@ object SleepStager {
         val grav: Long, val hr: Long, val rr: Long, val resp: Long,
         val tz: Long, val wristOff: Long, val band: Long, val v2: Boolean,
         val sleepHRBaseline: Double?,
+        val learnedBed: Long?, val learnedWake: Long?,
     )
 
     /** Bound ≈ the distinct days of a scoring window (matches the Swift detectSleepCache capacity, 40).
@@ -1520,6 +1564,15 @@ object SleepStager {
         // (byte-identical when unset); the live call site can thread a value derived from the trailing sleep
         // history. Folded into the memo key so a changed band re-keys. Mirrors Swift.
         sleepHRBaseline: Double? = null,
+        // Learned habitual night as LOCAL seconds-of-day (bedtime, wake) from the #547 learner + the
+        // typical-night median. When present, the daytime false-sleep guard places its band by the
+        // WEARER'S timing (the complement of their learned night ± [learnedNightGraceMin]) instead of
+        // the fixed [daytimeBandStartHour, daytimeBandEndHour) clock hours — a 21:00 pre-bedtime
+        // still block for someone habitually asleep by 23:30 then faces the daytime bar like any
+        // other daytime stretch, instead of reading "overnight" because it starts past hour 20 and
+        // stitching onto the real night as its tail. null (cold start, pure callers, tests) keeps
+        // the fixed band byte-identically. Folded into the memo key so a changed window re-keys.
+        learnedNightSec: Pair<Long, Long>? = null,
         // Sleep & Rest test mode (E10): when non-null, each candidate run emits ONE gate verdict line
         // and the sparse-gravity bridge records its result. Side-effect-only; the returned list is
         // byte-identical to the untraced call. Default null = no work, byte-identical. Mirrors Swift.
@@ -1531,7 +1584,7 @@ object SleepStager {
         // Swift detectSleep traceSink bypass (#707).
         if (traceSink != null) {
             return detectSleepUncached(hr, rr, resp, gravity, tzOffsetSeconds, wristOff,
-                bandSleepState, useSleepStagerV2, sleepHRBaseline, traceSink)
+                bandSleepState, useSleepStagerV2, sleepHRBaseline, learnedNightSec, traceSink)
         }
         val key = DetectKey(
             // Fold the three gravity axes SEPARATELY (raw IEEE-754 bits, like StagerCache.fingerprint)
@@ -1553,13 +1606,15 @@ object SleepStager {
             band = streamFingerprint(bandSleepState, { it.first }) { it.second.toLong() },
             v2 = useSleepStagerV2,
             sleepHRBaseline = sleepHRBaseline,
+            learnedBed = learnedNightSec?.first,
+            learnedWake = learnedNightSec?.second,
         )
         synchronized(detectCacheLock) { detectCache[key] }?.let { return copyDetected(it) }
         // Compute OUTSIDE the lock (the Swift AnalyticsMemoCache does the same): a slow night never
-        // serialises another thread's lookup, and a racing duplicate compute just overwrites the entry
-        // with an identical value — benign, the function is deterministic.
+        // serialises another thread's lookup, and a racing duplicate compute just overwrites the
+        // entry with an identical value — benign, the function is deterministic.
         val sessions = detectSleepUncached(hr, rr, resp, gravity, tzOffsetSeconds, wristOff,
-            bandSleepState, useSleepStagerV2, sleepHRBaseline, null)
+            bandSleepState, useSleepStagerV2, sleepHRBaseline, learnedNightSec, null)
         synchronized(detectCacheLock) { detectCache[key] = copyDetected(sessions) }
         return sessions
     }
@@ -1576,6 +1631,7 @@ object SleepStager {
         bandSleepState: List<Pair<Long, Int>>,
         useSleepStagerV2: Boolean,
         sleepHRBaseline: Double?,
+        learnedNightSec: Pair<Long, Long>?,
         traceSink: ((String) -> Unit)?,
     ): List<DetectedSleep> {
         val grav = gravity.sortedBy { it.ts }
@@ -1743,7 +1799,7 @@ object SleepStager {
             // clear the STRONGER re-onset bar — killing the 9 am phantom nap of residual post-wake stillness
             // while keeping a genuine second sleep. Outside the window the guard is the ordinary daytime bar.
             val morningWakeEnd = if (chainFromOvernight) chainPrevEnd else null
-            val isDaytime = isDaytimeCenter(p, tzOffsetSeconds)
+            val isDaytime = isDaytimeCenter(p, tzOffsetSeconds, learnedNightSec)
             // Evaluate the morning-stillness guard ONLY when the run is daytime-centered, preserving the
             // original short-circuit (overnight runs never call it). The boolean used to drop below is
             // identical to the original combined condition.
@@ -1800,7 +1856,7 @@ object SleepStager {
                 }
             }
             // A run that does NOT continue the chain re-anchors it on this run's onset.
-            if (!continuesChain) chainFromOvernight = isOvernightOnset(p.start, tzOffsetSeconds)
+            if (!continuesChain) chainFromOvernight = isOvernightOnset(p.start, tzOffsetSeconds, learnedNightSec)
             chainPrevEnd = p.end
         }
         sessions.sortBy { it.start }

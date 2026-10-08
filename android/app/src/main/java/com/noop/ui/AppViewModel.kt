@@ -1040,13 +1040,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val logicalKey = logicalDayKeyNow()       // ISO yyyy-MM-dd, local logical day
                 val localKey = java.time.LocalDate.now().toString()
                 _today.value = resolveTodayRow(days, logicalKey, localKey)
+                // Illness watch reads a COMPLETED-day history: drop the live local AND logical day
+                // rows before evaluating. Today's row keeps accumulating
+                // everything that ends today — a pre-bedtime movie block read as sleep dilutes its
+                // HRV the moment it is banked, and the alert fired at 22:30 over a film. The newest
+                // ACCUSING row after this filter is yesterday: its night ended at this morning's wake
+                // and can no longer move, so a raised alert names finished nights only.
+                val illnessDays = IllnessWatch.completedHistory(days, setOf(localKey, logicalKey))
                 _healthAlert.value =
                     (if (_illnessWatchEnabled.value && _today.value != null &&
                         days.lastOrNull()?.day == _today.value?.day
                     ) {
-                        IllnessWatch.evaluate(days)
+                        IllnessWatch.evaluate(illnessDays)
                     } else null)
-                        ?.let { IllnessAlertNotifier.withWindow(appContext, it, days) }
+                        ?.let { IllnessAlertNotifier.withWindow(appContext, it, illnessDays) }
                 // EVERY evaluation is reported, raised or clear. The clear-to-raised edge now lives in
                 // the notifier's PERSISTED state (#2586): `_healthAlert` starts null on every ViewModel
                 // build, so gating here made a cold start look like a transition, and the day gate then
@@ -2875,14 +2882,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setIllnessWatchEnabled(enabled: Boolean) {
         _illnessWatchEnabled.value = enabled
         NoopPrefs.setIllnessWatch(appContext, enabled)
-        // Recompute now — the recentDays collector only fires on data changes.
+        // Recompute now — the recentDays collector only fires on data changes. Same completed-day
+        // history as the collector: the live local/logical day rows are dropped before evaluating,
+        // so a still-open evening (a pre-bedtime movie block) can never supply an accusing night.
         val days = recentDays.value
+        val illnessDays = IllnessWatch.completedHistory(
+            days, setOf(java.time.LocalDate.now().toString(), logicalDayKeyNow()),
+        )
         _healthAlert.value = (if (enabled && _today.value != null &&
             days.lastOrNull()?.day == _today.value?.day
         ) {
-            IllnessWatch.evaluate(days)
+            IllnessWatch.evaluate(illnessDays)
         } else null)
-            ?.let { IllnessAlertNotifier.withWindow(appContext, it, days) }
+            ?.let { IllnessAlertNotifier.withWindow(appContext, it, illnessDays) }
         // Reported like any other evaluation, because the persisted edge (#2586) is only correct if
         // EVERY change of state reaches it. Switching the watch off while an alert was raised used to
         // clear the banner here and leave the stored flag raised, so the next genuine transition —

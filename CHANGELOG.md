@@ -31,6 +31,21 @@ approximate; downloads are on the [Releases](https://github.com/NoopApp/noop/rel
   which outlives the screen. The same fix covers the Hydration card, whose log/undo writes were
   cancelled the same way.
 
+**The illness early-warning stops firing over a quiet evening**
+
+- **A still pre-bedtime stretch is no longer mistaken for the start of tonight, and the watch no
+  longer judges a night that has not ended.** Watching a movie seated — heart rate and movement
+  both slowing — could be detected as sleep, bank into today's row, and drag that day's HRV and
+  respiration enough to raise the early-illness heads-up at 22:30, about a night that had not
+  begun. Three fixes land together: the watch now evaluates only completed days, so the newest
+  night it can accuse has already ended; its HRV and respiration comparisons use each night's
+  main-night values instead of the whole-day pool a false nap session dilutes (a schema update
+  stores them per row; older and imported rows keep today's behavior until re-scored); and the
+  sleep detector places its daytime guard relative to your learned bedtime — the same timing it
+  already learns for the Sleep tab — instead of a fixed 8 pm clock boundary, so pre-bedtime
+  stillness faces the same bar as any other daytime stretch. Real nights and real naps are
+  untouched.
+
 ---
 
 ## 12.0.1 (NoopMod): Pick any app that notifies you (Android)

@@ -59,7 +59,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LiftSessionRow::class,
         LiftSetEntity::class,
     ],
-    version = 41,
+    version = 42,
     // #775: ON so Room's KSP processor writes the generated schema (every table's exact `CREATE TABLE`,
     // columns in declaration order with affinity/NOT NULL/default, PK and indices) as JSON. That export
     // is what lets a plain JVM test — no device, no Robolectric — read Android's REAL schema and compare
@@ -79,7 +79,7 @@ abstract class WhoopDatabase : RoomDatabase() {
         const val DB_NAME = "noop_whoop.db"
         /** Room schema version — MUST equal the `@Database(version = …)` above. Surfaced in the backup
          *  manifest (#1410) so an export states its schema. Bump both together on a migration. */
-        const val SCHEMA_VERSION = 41
+        const val SCHEMA_VERSION = 42
 
         @Volatile
         private var instance: WhoopDatabase? = null
@@ -1101,6 +1101,29 @@ abstract class WhoopDatabase : RoomDatabase() {
         }
 
         /**
+         * v41 -> v42: ADDITIVE, adds `dailyMetric.mainNightAvgHrv` and `dailyMetric.mainNightRespRateBpm`
+         * (nullable REAL) — the same HRV/respiration statistics as `avgHrv`/`respRateBpm` but scoped to the
+         * day's MAIN-NIGHT group (#525/#561 selection) instead of every matched session. The pooled columns
+         * are right for Charge ("best resting physiology"), but IllnessWatch compares a day against its own
+         * baseline, and a phantom daytime session (a seated-movie still block read as sleep) dilutes the
+         * pooled values of BOTH the accusing day and every baseline night it lands in — the early-warning
+         * false fire reported against a pre-bedtime movie. Nullable with no default and no backfill: only
+         * the strap re-score writes them; pre-v42 rows and imports stay null and IllnessWatch falls back to
+         * the pooled column, which is exactly today's behavior. Android-only for now (no GRDB twin),
+         * recorded in schema_oracle.json as an `iosAbsent` divergence.
+         */
+        internal val DAILY_MAIN_NIGHT_PHYSIO_MIGRATION_SQL: List<String> = listOf(
+            "ALTER TABLE `dailyMetric` ADD COLUMN `mainNightAvgHrv` REAL",
+            "ALTER TABLE `dailyMetric` ADD COLUMN `mainNightRespRateBpm` REAL",
+        )
+
+        internal val MIGRATION_41_42 = object : Migration(41, 42) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                for (stmt in DAILY_MAIN_NIGHT_PHYSIO_MIGRATION_SQL) db.execSQL(stmt)
+            }
+        }
+
+        /**
          * Every migration the builder registers, as a VALUE rather than an argument list.
          *
          * It was previously spelled inline in `addMigrations(...)`, which meant nothing could check it. A
@@ -1127,6 +1150,7 @@ abstract class WhoopDatabase : RoomDatabase() {
             MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30,
             MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36,
             MIGRATION_36_37, MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41,
+            MIGRATION_41_42,
         )
 
         private fun build(appContext: Context): WhoopDatabase =

@@ -77,6 +77,30 @@ object Zones {
  */
 object IllnessWatch {
     /**
+     * The subset of [days] safe to accuse: rows for days that are DONE. The row keyed by the live
+     * local/logical day keeps accumulating everything that ENDS today — last night's real sleep plus
+     * this afternoon's couch stillness and tonight's pre-bedtime movie block — so it is scored against
+     * a baseline of finished nights while itself being unfinished. Dropping the live-day keys before
+     * evaluate() makes the newest accusing row the last COMPLETED wake-day: its night ended at this
+     * morning's wake and can no longer move. Pass the phone's current local AND logical day keys
+     * (the #304 carve-out means a just-banked night can carry either); every other key is kept, so
+     * importing history cannot make this drop real completed days.
+     */
+    fun completedHistory(days: List<DailyMetric>, liveDayKeys: Set<String>): List<DailyMetric> =
+        days.filterNot { it.day in liveDayKeys }
+
+    /**
+     * The value of an illness signal for [d]: the main-night-scoped statistic when the row carries
+     * one (v42 on-device rows), else the day-pooled column. Consistency matters more than purity:
+     * BOTH the accusing day and every baseline night are read through this same preference, so a
+     * history that is half scoped / half pooled never compares a scoped value against a pooled
+     * baseline. Imported and pre-v42 rows simply take the fallback, which is exactly today's
+     * behavior.
+     */
+    private fun hrvValue(d: DailyMetric): Double? = d.mainNightAvgHrv ?: d.avgHrv
+    private fun respValue(d: DailyMetric): Double? = d.mainNightRespRateBpm ?: d.respRateBpm
+
+    /**
      * Evaluate the [days] history (oldest -> newest). Returns a human-readable banner
      * message when 2+ anomaly flags fire, otherwise null.
      *
@@ -102,7 +126,9 @@ object IllnessWatch {
             Baselines.foldHistory(base.map { it.restingHr?.toDouble() }, cfg).usable
         } == true
         val hrvBaseUsable = Baselines.metricCfg["hrv"]?.let { cfg ->
-            Baselines.foldHistory(base.map { it.avgHrv }, cfg).usable
+            // Through the SAME scoped-first reader as the signal below: a fold over half-scoped /
+            // half-pooled values is not one baseline, and "usable" must describe what is compared.
+            Baselines.foldHistory(base.map { hrvValue(it) }, cfg).usable
         } == true
 
         fun mean(vals: List<Double>): Double? =
@@ -115,7 +141,6 @@ object IllnessWatch {
             mean(base.mapNotNull(selector))
 
         val flags = mutableListOf<String>()
-
         run {
             val r = rm { it.restingHr?.toDouble() }
             val b = bm { it.restingHr?.toDouble() }
@@ -130,9 +155,9 @@ object IllnessWatch {
         run {
             // The sparsest of the four: the over-count gate withholds whole nights (#1118), so HRV is
             // the likeliest to have been resting on a cold-start baseline.
-            val r = rm { it.avgHrv }
-            val b = bm { it.avgHrv }
-            val current = latest.avgHrv
+            val r = rm { hrvValue(it) }
+            val b = bm { hrvValue(it) }
+            val current = hrvValue(latest)
             if (r != null && b != null && current != null && b > 0 && hrvBaseUsable &&
                 r <= b * 0.80 && current <= b * 0.80
             ) {
@@ -155,10 +180,10 @@ object IllnessWatch {
             //  - only compare physiologically plausible sleeping-RR values (~8-25 bpm), rejecting RSA outliers,
             //  - use a wider +2.5 bpm margin so one noisy night (averaged over the 2 recent days) can't fire,
             //    while a sustained genuine rise (both recent nights up) still does.
-            val respBase = base.mapNotNull { it.respRateBpm }
-            val r = rm { it.respRateBpm }
-            val b = bm { it.respRateBpm }
-            val current = latest.respRateBpm
+            val respBase = base.mapNotNull { respValue(it) }
+            val r = rm { respValue(it) }
+            val b = bm { respValue(it) }
+            val current = respValue(latest)
             val plausible = { v: Double -> v in 8.0..25.0 }
             if (r != null && b != null && current != null && respBase.size >= 10 &&
                 plausible(r) && plausible(b) && plausible(current) &&

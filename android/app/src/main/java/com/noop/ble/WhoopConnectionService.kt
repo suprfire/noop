@@ -125,13 +125,20 @@ internal class NotifyDayStateCache(
 
         val todayRow = com.noop.ui.resolveTodayRow(days, logicalKey, localKey)
         val anchorRow = com.noop.ui.widgetAnchorRow(days, logicalKey, localKey)
+        // Illness watch reads a COMPLETED-day history: drop the live local AND logical day rows
+        // before evaluating. Today's row keeps accumulating everything that ends today — a
+        // pre-bedtime movie block read as sleep dilutes its HRV the moment it is banked, and the
+        // alert fired at 22:30 over a film. The newest accusing row after this filter is yesterday:
+        // its night ended at this morning's wake and can no longer move. (Same filter as the
+        // AppViewModel collector; [days] itself stays raw for the battery night-guard.)
+        val illnessDays = IllnessWatch.completedHistory(days, setOf(localKey, logicalKey))
         val state = NotifyDayState(
             todayRecovery = todayRow?.recovery,
             widgetRecovery = anchorRow?.recovery?.roundToInt(),
             widgetRest = anchorRow?.let { RestScorer.restFromDaily(it)?.roundToInt() },
             widgetEffort = anchorRow?.strain?.roundToInt(),
             illness = if (illnessEnabled && todayRow != null && days.lastOrNull()?.day == todayRow.day) {
-                illnessEvaluator(days)
+                illnessEvaluator(illnessDays)
             } else null,
             days = days,
         )

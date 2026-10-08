@@ -360,6 +360,17 @@ data class DailyMetric(
     // misreading. Appended LAST so the column order matches the Room CREATE TABLE and the Swift row.
     // Null on every row scored before v36 and on any day with no sleep at all.
     val sleepHrOnly: Boolean? = null,
+    // MAIN-NIGHT-SCOPED physiology for the illness early-warning (v42). The day's pooled
+    // avgHrv/respRateBpm intentionally cover ALL matched sessions (#525 note — correct for
+    // Charge, which wants the body's best resting physiology), but IllnessWatch compares a day
+    // against its own baseline, and a false daytime session (the seated-movie still block that
+    // reads as sleep) dilutes the pooled HRV and respiration of BOTH the accusing day and every
+    // baseline night it lands in. These two carry the same statistics restricted to the main-night
+    // group (#525/#561 selection). IllnessWatch prefers them and falls back to the pooled column,
+    // so imported rows and pre-v42 rows keep working until a re-score writes these. Nullable with
+    // no backfill: only the strap pipeline computes them, exactly like skinTempC above.
+    val mainNightAvgHrv: Double? = null,
+    val mainNightRespRateBpm: Double? = null,
 )
 
 /**
