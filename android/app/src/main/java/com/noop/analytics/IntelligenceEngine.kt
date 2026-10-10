@@ -138,6 +138,9 @@ object IntelligenceEngine {
         val primaryRhrCoverage: PrimarySessionRestingHR.Coverage?,
         val spo2Candidate: Int?,
         val hrvOverCount: Boolean?,
+        /** Nightly data-trust census (#15/#27), replayed on a hit so a reused night carries its
+         *  shadow score exactly like the freshly-scored path. Null = the census declined (no window). */
+        val nightTrust: NightlyTrust.Result? = null,
         val diagLines: List<String>,
         /** #1575: the per-day trace lines for each channel, replayed on a hit so an active trace no
          *  longer forces a full re-read + re-score of every night on every pass. Empty when those modes
@@ -756,6 +759,9 @@ object IntelligenceEngine {
         val primarySessionRHRByDay = LinkedHashMap<String, Double>()
         // #1169: its coverage inputs (valid-sample count + primary-session duration), same lifetime as the mean.
         val primarySessionRHRCoverageByDay = LinkedHashMap<String, PrimarySessionRestingHR.Coverage>()
+        // Nightly data-trust census (#15/#27): per-day 0-100 trust score + wear fraction, carried from
+        // pass 1 for metricSeries persistence as the shadow keys "night_trust" / "night_wear_frac".
+        val nightTrustByDay = LinkedHashMap<String, NightlyTrust.Result>()
 
         // In-memory nightly values harvested in pass 1, used to seed the pass-2 baseline.
         // Keyed by day so the union with imported history de-dupes cleanly per UTC day.
@@ -990,23 +996,20 @@ object IntelligenceEngine {
                 dayCacheKey = key
                 val cached = reusableDayScan(day, key)
                 if (cached != null) {
-                    // Repopulate every per-day map pass 2 reads (mirror of the loop's own writes below),
-                    // replay the day's diag lines, and continue — the reused night is downstream-
-                    // indistinguishable from a freshly-scored one. readOwnerByDay is the universal CAPTURE-B
-                    // owner/hrRows the pass-2 dayOwner line reads; the Swift twin carries it on the DayScan,
-                    // so we repopulate it here from the cached values (only when the universal sink is active,
-                    // matching the loop's own guard).
-                    if (universalSink != null) readOwnerByDay[day] = OwnerRead(cached.owner, cached.hrRows)
-                    cached.hrvOverCount?.let { hrvOverCountByDay[day] = it }
-                    nightlyHrvByDay[day] = cached.res.daily.avgHrv
-                    nightlyRhrByDay[day] = cached.res.daily.restingHr?.toDouble()
-                    nightlySkinByDay[day] = cached.res.nightlySkinTempC
-                    nightlyRespByDay[day] = cached.res.daily.respRateBpm
-                    cached.spo2Candidate?.let { spo2CandidateByDay[day] = it }
-                    cached.primaryRhr?.let { primarySessionRHRByDay[day] = it }
-                    cached.primaryRhrCoverage?.let { primarySessionRHRCoverageByDay[day] = it }
-                    scoredNights.add(cached.res)
-                    resolvedScoreOwnerByDay[day] = cached.owner
+                    // Repopulate every per-day map pass 2 reads (mirror of the loop's own writes below)
+                    // — the five `?.let` captures and map writes that lived inline here are lifted into
+                    // [replayCachedNight]: each captured lambda body sits INSIDE analyzeRecentOnCpu for
+                    // JaCoCo, and #1524's budget test measured that method over its 55,700-byte ceiling.
+                    // One named call costs an arg-load sequence instead. readOwnerByDay is the universal
+                    // CAPTURE-B owner/hrRows the pass-2 dayOwner line reads; the Swift twin carries it on
+                    // the DayScan, so we repopulate it here from the cached values (only when the
+                    // universal sink is active, matching the loop's own guard).
+                    replayCachedNight(
+                        day, cached, universalSink != null, readOwnerByDay, hrvOverCountByDay,
+                        nightlyHrvByDay, nightlyRhrByDay, nightlySkinByDay, nightlyRespByDay,
+                        spo2CandidateByDay, primarySessionRHRByDay, primarySessionRHRCoverageByDay,
+                        nightTrustByDay, scoredNights, resolvedScoreOwnerByDay,
+                    )
                     for (line in cached.diagLines) diag(line)
                     // #1575: replay this night's trace lines to their own channels, so a reused night is
                     // indistinguishable from a freshly-scored one in the export as well as in the numbers.
@@ -1470,6 +1473,13 @@ object IntelligenceEngine {
             val (primaryRhr, primaryRhrCoverage) = AnalyticsEngine.primarySessionRestingHRWithCoverage(res.sleepSessions, hr)
             primaryRhr?.let { primarySessionRHRByDay[res.daily.day] = it }
             primaryRhrCoverage?.let { primarySessionRHRCoverageByDay[res.daily.day] = it }
+            // Nightly data-trust census (#15/#27): the night's stream coverage + wear behavior scored
+            // 0-100 from the streams THIS day already read, carried for metricSeries shadow persistence
+            // in pass 2. The whole census — PPG-fill read, bed/off-wrist intersection, evaluate, map
+            // write — is lifted into [recordNightTrust]: analyzeRecentOnCpu lives near the JVM's 64 KB
+            // per-method ceiling and the JaCoCo budget (#1524) proved it: this call site inline blew
+            // analyzeRecentOnCpu past 55700 instrumented bytes. One statement, zero lambdas here.
+            recordNightTrust(nightTrustByDay, repo, owner, from, to, hr, grav, skin, spo2, respRows, wristOff, res)
             scoredNights.add(res)
             resolvedScoreOwnerByDay[res.daily.day] = owner
             // #1005: cache this freshly-scored night under its per-day key (only when it was cache-eligible
@@ -1481,13 +1491,14 @@ object IntelligenceEngine {
             // numbers. Runs whether or not the day is cacheable.
             val dayTraces = dayTrace.snapshot()
             replayDayTraces(dayTraces, sleepTraceSink, hrvTraceSink, stepsTraceSink)
-            dayCacheKey?.let { key ->
-                dayScanCache[day] = CachedDayScan(
-                    key = key, res = res, owner = owner, hrRows = hr.size,
-                    primaryRhr = primaryRhr, primaryRhrCoverage = primaryRhrCoverage,
-                    spo2Candidate = spo2CandidateByDay[day], hrvOverCount = hrvOverCountByDay[day],
-                    diagLines = dayDiagLines.toList(),
-                    traces = dayTraces,
+            // The CachedDayScan construction lived inside a `dayCacheKey?.let { }` lambda whose
+            // JaCoCo-instrumented body sat in analyzeRecentOnCpu; #1524's budget test measured that
+            // method over its ceiling, so the whole store is lifted into [storeCachedNightScan].
+            if (dayCacheKey != null) {
+                storeCachedNightScan(
+                    dayScanCache, day, dayCacheKey, res, owner, hr.size,
+                    primaryRhr, primaryRhrCoverage, spo2CandidateByDay[day], hrvOverCountByDay[day],
+                    nightTrustByDay[day], dayDiagLines.toList(), dayTraces,
                 )
                 dayCacheCacheable++
             }
@@ -1711,33 +1722,19 @@ object IntelligenceEngine {
             if (recoveryTraceSink != null) {
                 for (line in recoveryTraceLines(daily, baselines2)) recoveryTraceSink(line)
             }
-            RestScorer.restFromDaily(daily)?.let { rest ->
-                restRows.add(MetricSeriesRow(deviceId = computedId, day = daily.day, key = "sleep_performance", value = rest))
-            }
-            // #103: persist the SpO₂ candidate @82 nightly mean to metricSeries as "spo2_candidate" so the
-            // Blood Oxygen tile can surface it as a "strap estimate (unverified)" fallback when the toggle
-            // is ON. Written under the "-noop" computed device ID, never to `spo2Pct`.
-            spo2CandidateByDay[daily.day]?.let { cand ->
-                restRows.add(MetricSeriesRow(deviceId = computedId, day = daily.day, key = "spo2_candidate", value = cand.toDouble()))
-            }
-            // #1118: persist the HRV over-count flag (1/0) so the HRV card can mark an over-counted 4.0
-            // night's reading "unverified" until the two-channel de-dup lands. 0 written on a clean night
-            // (not just absent) so a night that flips clean on re-score clears its prior flag.
-            hrvOverCountByDay[daily.day]?.let { oc ->
-                restRows.add(MetricSeriesRow(deviceId = computedId, day = daily.day, key = "hrv_rr_overcount", value = if (oc) 1.0 else 0.0))
-            }
-            // #1169 shadow metric: the primary-session mean RHR, stored beside the shipped floor
-            // (daily.restingHr) under the "-noop" computed ID. Instrumentation only — never shown, never
-            // scored — for later mean-vs-floor evaluation from exports.
-            primarySessionRHRByDay[daily.day]?.let { v ->
-                restRows.add(MetricSeriesRow(deviceId = computedId, day = daily.day, key = "rhr_primary_session", value = v))
-            }
-            // #1169: its coverage inputs beside the mean — valid-sample count + primary-session duration (s)
-            // — so a thin-coverage night can be down-weighted in the later holdout. Raw inputs, not a fraction.
-            primarySessionRHRCoverageByDay[daily.day]?.let { cov ->
-                restRows.add(MetricSeriesRow(deviceId = computedId, day = daily.day, key = "rhr_primary_session_valid_samples", value = cov.validSamples.toDouble()))
-                restRows.add(MetricSeriesRow(deviceId = computedId, day = daily.day, key = "rhr_primary_session_duration_s", value = cov.durationSec))
-            }
+            // All six per-night shadow-metric appends, lifted verbatim into [shadowMetricRows]:
+            // each inline `?.let { restRows.add(...) }` is a captured lambda whose JaCoCo-instrumented
+            // body lives inside this method, and the #1524 budget test measured analyzeRecentOnCpu at
+            // 57,153 instrumented bytes against its 55,700 ceiling. The loop form costs ONE body.
+            // Semantics identical: restFromDaily row when non-null; spo2 candidate when present;
+            // over-count flag written 1/0 whenever known (a clean re-score clears the prior flag);
+            // rhr shadow mean + its raw coverage inputs; the #15/#27 trust census rows.
+            shadowMetricRows(
+                RestScorer.restFromDaily(daily), computedId, daily,
+                spo2CandidateByDay[daily.day], hrvOverCountByDay[daily.day],
+                primarySessionRHRByDay[daily.day], primarySessionRHRCoverageByDay[daily.day],
+                nightTrustByDay[daily.day], restRows,
+            )
 
             out.add(
                 Computed(
@@ -1756,20 +1753,9 @@ object IntelligenceEngine {
             // minute only , no HR/HRV/timestamps , so the next report ships PROOF of what was computed per
             // day (the project's log-failures-not-successes blind spot) and lets us settle the "Rest repeats
             // across days" question with data. Gated by the existing strap-log export. Mirrors the Swift line.
-            val tsmLog = daily.totalSleepMin?.let { Math.round(it).toString() } ?: "nil"
-            // #386: the banked stage split + efficiency ride beside the rollup, so a "homepage disagrees
-            // with the Sleep tab" report is self-diagnosing from the export alone — totalSleepMin vs the
-            // deep+rem+light sum is the identity both screens must agree on, now verifiable per pass, per
-            // day, without screenshots. Rounded minutes only (same privacy class as the rest of the line);
-            // stages=nil when the day has no banked stage split (an unstaged or imported-total-only day).
-            val effLog = daily.efficiency?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "nil"
-            diag(
-                "sleep day=${daily.day} totalSleepMin=$tsmLog " +
-                    "stages=${sleepStagesLogToken(daily.deepMin, daily.remMin, daily.lightMin)} " +
-                    "eff=$effLog " +
-                    "matched=${res.sleepSessions.size} " +
-                    "source=${daySourceToken(daily.day, importedWhoopDays, appleHealthDays)}",
-            )
+            // The whole line (tsmLog/effLog lambdas + the interpolation concat) is lifted into
+            // [sleepDayDiagLine] for the #1524 JaCoCo per-method budget; string shape byte-identical.
+            diag(sleepDayDiagLine(daily, res.sleepSessions.size, importedWhoopDays, appleHealthDays))
             // #674/#1244: flag a COMPUTED day carrying a sleep total with NO matched session — the folded
             // edited/hand-logged block on a day the detector staged nothing (see sleepDivergenceLogLine).
             // Scoped to computed days: an imported-total-only day legitimately has a total without our
@@ -3129,6 +3115,243 @@ object IntelligenceEngine {
         val skinAnchorRaw: Double?,
         val wristOff: List<Pair<Long, Long>>,
     )
+
+    /**
+     * Evaluate + record one night's data-trust census (#15/#27) into [out]. A named function so the
+     * census call site inside `analyzeRecentOnCpu` stays ONE statement: the JaCoCo per-method budget
+     * (#1524) proved the inline construction blew that method past its 55,700-byte instrumented
+     * ceiling (measured 57,412), so every piece of the census lives here, as it did for
+     * [spo2CandidateMean] before it.
+     */
+    private suspend fun recordNightTrust(
+        out: MutableMap<String, NightlyTrust.Result>,
+        repo: com.noop.data.WhoopRepository,
+        owner: String,
+        from: Long,
+        to: Long,
+        hr: List<com.noop.data.HrSample>,
+        grav: List<com.noop.data.GravitySample>,
+        skin: List<com.noop.data.SkinTempSample>,
+        spo2: List<com.noop.data.Spo2Sample>,
+        resp: List<com.noop.data.RespSample>,
+        wristOff: List<Pair<Long, Long>>,
+        res: DayResult,
+    ) {
+        NightlyTrust.evaluate(
+            nightTrustCensus(repo, owner, from, to, hr, grav, skin, spo2, resp, wristOff, res),
+        )?.let { out[res.daily.day] = it }
+    }
+
+    /**
+     * The six per-night shadow-metric appends pass 2 makes to [out] (restRows), lifted verbatim out
+     * of `analyzeRecentOnCpu` for the #1524 JaCoCo per-method budget: each inline
+     * `?.let { out.add(...) }` is a captured lambda whose instrumented body lives INSIDE that method,
+     * and six of them put it at 57,153 bytes against its 55,700 ceiling (measured by
+     * IntelligenceEngineJacocoBudgetTest). Here the appends are plain null-checked statements — one
+     * body total. Semantics byte-identical to the inline originals:
+     *   - "sleep_performance" only when restFromDaily is non-null;
+     *   - "spo2_candidate" only when present (#103);
+     *   - "hrv_rr_overcount" written 1/0 whenever known — a clean re-score clears the prior flag (#1118);
+     *   - "rhr_primary_session" + its two raw coverage inputs (#1169);
+     *   - the #15/#27 trust rows via [nightTrustShadowRows].
+     */
+    private fun shadowMetricRows(
+        rest: Double?,
+        computedId: String,
+        daily: com.noop.data.DailyMetric,
+        spo2Candidate: Int?,
+        hrvOverCount: Boolean?,
+        primaryRhr: Double?,
+        primaryRhrCoverage: PrimarySessionRestingHR.Coverage?,
+        nightTrust: NightlyTrust.Result?,
+        out: MutableList<MetricSeriesRow>,
+    ) {
+        if (rest != null) {
+            out.add(MetricSeriesRow(deviceId = computedId, day = daily.day, key = "sleep_performance", value = rest))
+        }
+        if (spo2Candidate != null) {
+            out.add(MetricSeriesRow(deviceId = computedId, day = daily.day, key = "spo2_candidate", value = spo2Candidate.toDouble()))
+        }
+        if (hrvOverCount != null) {
+            out.add(MetricSeriesRow(deviceId = computedId, day = daily.day, key = "hrv_rr_overcount", value = if (hrvOverCount) 1.0 else 0.0))
+        }
+        if (primaryRhr != null) {
+            out.add(MetricSeriesRow(deviceId = computedId, day = daily.day, key = "rhr_primary_session", value = primaryRhr))
+        }
+        if (primaryRhrCoverage != null) {
+            out.add(MetricSeriesRow(deviceId = computedId, day = daily.day, key = "rhr_primary_session_valid_samples", value = primaryRhrCoverage.validSamples.toDouble()))
+            out.add(MetricSeriesRow(deviceId = computedId, day = daily.day, key = "rhr_primary_session_duration_s", value = primaryRhrCoverage.durationSec))
+        }
+        out.addAll(nightTrustShadowRows(computedId, daily.day, nightTrust))
+    }
+
+    /**
+     * Repopulate every per-day map pass 2 reads from a reused night's [cached] scan (mirror of the
+     * fresh-scoring loop's own writes), so the reused night is downstream-indistinguishable. Lifted
+     * out of `analyzeRecentOnCpu` for the #1524 JaCoCo per-method budget: the five `?.let` captures
+     * that lived at the call site each contribute an instrumented lambda body to that method, and
+     * the budget test measured it over ceiling. Plain null-checked statements here cost one body.
+     */
+    private fun replayCachedNight(
+        day: String,
+        cached: CachedDayScan,
+        universalSinkActive: Boolean,
+        readOwnerByDay: MutableMap<String, OwnerRead>,
+        hrvOverCountByDay: MutableMap<String, Boolean>,
+        nightlyHrvByDay: MutableMap<String, Double?>,
+        nightlyRhrByDay: MutableMap<String, Double?>,
+        nightlySkinByDay: MutableMap<String, Double?>,
+        nightlyRespByDay: MutableMap<String, Double?>,
+        spo2CandidateByDay: MutableMap<String, Int>,
+        primarySessionRHRByDay: MutableMap<String, Double>,
+        primarySessionRHRCoverageByDay: MutableMap<String, PrimarySessionRestingHR.Coverage>,
+        nightTrustByDay: MutableMap<String, NightlyTrust.Result>,
+        scoredNights: MutableList<DayResult>,
+        resolvedScoreOwnerByDay: MutableMap<String, String>,
+    ) {
+        if (universalSinkActive) readOwnerByDay[day] = OwnerRead(cached.owner, cached.hrRows)
+        cached.hrvOverCount?.let { hrvOverCountByDay[day] = it }
+        nightlyHrvByDay[day] = cached.res.daily.avgHrv
+        nightlyRhrByDay[day] = cached.res.daily.restingHr?.toDouble()
+        nightlySkinByDay[day] = cached.res.nightlySkinTempC
+        nightlyRespByDay[day] = cached.res.daily.respRateBpm
+        cached.spo2Candidate?.let { spo2CandidateByDay[day] = it }
+        cached.primaryRhr?.let { primarySessionRHRByDay[day] = it }
+        cached.primaryRhrCoverage?.let { primarySessionRHRCoverageByDay[day] = it }
+        cached.nightTrust?.let { nightTrustByDay[day] = it }
+        scoredNights.add(cached.res)
+        resolvedScoreOwnerByDay[day] = cached.owner
+    }
+
+    /**
+     * Build + store one freshly-scored night's [CachedDayScan] under its per-day key. The whole
+     * construction lived inside a `dayCacheKey?.let { }` lambda whose JaCoCo-instrumented body sat
+     * in `analyzeRecentOnCpu`; #1524's budget test measured that method over its ceiling, so the
+     * store is lifted here. Call-site guard is identical: only cache-eligible days (dayCacheKey !=
+     * null — a WHOOP 4.0 owner with no trace active) reach this, and reused days continue'd above.
+     */
+    private fun storeCachedNightScan(
+        cache: MutableMap<String, CachedDayScan>,
+        day: String,
+        key: String,
+        res: DayResult,
+        owner: String,
+        hrRows: Int,
+        primaryRhr: Double?,
+        primaryRhrCoverage: PrimarySessionRestingHR.Coverage?,
+        spo2Candidate: Int?,
+        hrvOverCount: Boolean?,
+        nightTrust: NightlyTrust.Result?,
+        diagLines: List<String>,
+        traces: DayTraces,
+    ) {
+        cache[day] = CachedDayScan(
+            key = key, res = res, owner = owner, hrRows = hrRows,
+            primaryRhr = primaryRhr, primaryRhrCoverage = primaryRhrCoverage,
+            spo2Candidate = spo2Candidate, hrvOverCount = hrvOverCount,
+            nightTrust = nightTrust,
+            diagLines = diagLines,
+            traces = traces,
+        )
+    }
+
+    /**
+     * The per-day scoring diagnostic line (Sleep overhaul §2.5): day key, FINAL computed total-sleep
+     * minutes, banked stage split (#386), efficiency, matched-session count, and provenance token —
+     * counts + rounded minutes only, no HR/HRV/timestamps, same privacy class as the rest of the
+     * strap log. Lifted out of `analyzeRecentOnCpu` for the #1524 JaCoCo per-method budget (the two
+     * `?.let` formatters and the interpolation concat sat in that method); string shape byte-identical
+     * to the inline original, mirroring the Swift line. stages=nil when the day has no banked stage
+     * split (an unstaged or imported-total-only day).
+     */
+    internal fun sleepDayDiagLine(
+        daily: com.noop.data.DailyMetric,
+        matchedSessions: Int,
+        importedWhoopDays: Set<String>,
+        appleHealthDays: Set<String>,
+    ): String {
+        val tsmLog = daily.totalSleepMin?.let { Math.round(it).toString() } ?: "nil"
+        val effLog = daily.efficiency?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "nil"
+        return "sleep day=${daily.day} totalSleepMin=$tsmLog " +
+            "stages=${sleepStagesLogToken(daily.deepMin, daily.remMin, daily.lightMin)} " +
+            "eff=$effLog " +
+            "matched=$matchedSessions " +
+            "source=${daySourceToken(daily.day, importedWhoopDays, appleHealthDays)}"
+    }
+
+    /** Shadow metricSeries rows for one night's trust census (#15/#27): the 0-100 score always,
+     *  the wear fraction only when the night had a matched bed window (an absent component stays
+     *  absent — never a fabricated 0). Lifted out of pass 2 for the #1524 method budget; empty
+     *  when the census declined. */
+    private fun nightTrustShadowRows(
+        computedId: String,
+        day: String,
+        t: NightlyTrust.Result?,
+    ): List<MetricSeriesRow> {
+        if (t == null) return emptyList()
+        val rows = ArrayList<MetricSeriesRow>(2)
+        rows.add(MetricSeriesRow(deviceId = computedId, day = day, key = "night_trust", value = t.score.toDouble()))
+        t.wearFrac?.let { w ->
+            rows.add(MetricSeriesRow(deviceId = computedId, day = day, key = "night_wear_frac", value = w))
+        }
+        return rows
+    }
+
+    /**
+     * Assemble one scored night's [NightlyTrust.Inputs] from the streams the day loop ALREADY read
+     * (no extra full-stream scans beyond the single PPG read): sensor-HR seconds, the PPG-DERIVED
+     * fill seconds that exist where the strap reported no bpm (#156), gravity timestamps, the
+     * optional-channel sample counts, and the bed-window wear behavior — total matched-sleep
+     * seconds and the share of them the WRIST_OFF intervals cover (the #500/#504 pairing already
+     * computed upstream, intersected with this night's sessions). A named function rather than an
+     * inline block: `analyzeRecentOnCpu` lives near the JVM's 64 KB per-method bytecode ceiling
+     * (#1524) and this pass adds the census to it.
+     */
+    private suspend fun nightTrustCensus(
+        repo: com.noop.data.WhoopRepository,
+        owner: String,
+        from: Long,
+        to: Long,
+        hr: List<com.noop.data.HrSample>,
+        grav: List<com.noop.data.GravitySample>,
+        skin: List<com.noop.data.SkinTempSample>,
+        spo2: List<com.noop.data.Spo2Sample>,
+        resp: List<com.noop.data.RespSample>,
+        wristOff: List<Pair<Long, Long>>,
+        res: DayResult,
+    ): NightlyTrust.Inputs {
+        val sensorSeconds = HashSet<Long>(hr.size)
+        for (s in hr) sensorSeconds += s.ts
+        // PPG fill = window-centre seconds where the ONLY HR is the autocorrelation estimate (#156).
+        var fill = 0
+        for (p in repo.ppgHrSamples(owner, from, to, STREAM_LIMIT)) {
+            if (p.ts !in sensorSeconds) fill++
+        }
+        // Wear: bed seconds across matched sessions, and the share covered by off-wrist intervals.
+        var bedSec = 0.0
+        for (s in res.sleepSessions) bedSec += (s.end - s.start).coerceAtLeast(0L).toDouble()
+        var offInBed = 0.0
+        if (bedSec > 0.0) {
+            for ((offStart, offEnd) in wristOff) {
+                for (s in res.sleepSessions) {
+                    val a = maxOf(offStart, s.start)
+                    val b = minOf(offEnd, s.end)
+                    if (b > a) offInBed += (b - a).toDouble()
+                }
+            }
+        }
+        return NightlyTrust.Inputs(
+            windowSec = to - from,
+            hrSecondsCovered = sensorSeconds.size,
+            ppgFillSeconds = fill,
+            gravityTs = grav.map { it.ts },
+            skinSamples = skin.size,
+            spo2Samples = spo2.size,
+            respSamples = resp.size,
+            bedSec = bedSec,
+            wristOffSecInBed = offInBed,
+        )
+    }
 
     /**
      * The per-day diagnostic source token from the imported day-key sets. A WHOOP export covering [day]

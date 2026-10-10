@@ -35,6 +35,24 @@ approximate; downloads are on the [Releases](https://github.com/NoopApp/noop/rel
   of healthy windows. No user-visible change ships with this entry; the call-site switch is a
   separate, opt-in decision pending back-testing on real case histories.
 
+---
+
+## Unreleased (NoopMod): nightly data-trust census (Android)
+
+**Experimental — shadow instrumentation only, nothing user-visible changes**
+
+- **Every scored night now carries a 0-100 data-trust score plus a wear fraction.** The new
+  `NightlyTrust` engine composes the honesty signals that were scattered across the app — stream
+  coverage, PPG-derived-HR fill share (#156), gravity sparsity and dropouts (the #345 sparse test),
+  and off-wrist time inside the bed window (#500/#504) — into one per-night figure answering "how
+  much can tonight's scores be trusted". Channels a device never carries (thermal/SpO2 on a
+  WHOOP 4.0) are absent from the weighted mean, never scored zero, so a 4.0 night is not punished
+  for hardware it does not own. Persisted as shadow keys `night_trust` / `night_wear_frac` under
+  the computed source: instrumentation only, never shown, never fed to any score, accruing on real
+  devices so the trust surface — and later alert gating — ships on measured data. Pure engine with
+  13 JVM tests; wiring respects the #1524 per-method JaCoCo budget (the census, shadow-row,
+  cache-replay, cache-store and sleep-diag blocks are lifted into named helpers).
+
 ## 12.0.2 (NoopMod): Home cards follow a sleep edit (Android)
 
 **Today stops showing the pre-edit night**
