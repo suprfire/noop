@@ -17,6 +17,24 @@ approximate; downloads are on the [Releases](https://github.com/NoopApp/noop/rel
 
 ---
 
+---
+
+## Unreleased (NoopMod): noise-adaptive illness early-warning prototype (Android)
+
+**Experimental — internal only, not yet wired into any alert**
+
+- **`IllnessWatchZ`: a z-score variant of the illness early-watch is now in the analytics layer
+  with JVM tests.** It keeps the shipped watch's spine (two-night window over completed wake-days,
+  ~28-night baseline ending three days ago, the usable-baseline gates, the plausibility clamp, and
+  the two-flag requirement) and replaces its fixed margins with noise-adaptive ones: each signal's
+  threshold is the study-anchored floor (resting HR +4 bpm, skin temp +0.35 °C — published
+  presymptomatic effect sizes) raised to one personal-MAD when the wearer's own night-to-night
+  noise is wider. A banner also needs summed z-evidence ≥ 3, so two metrics barely over their own
+  noise floors can no longer stack into a warning. Monte-Carlo over 30k synthetic person-windows:
+  ~5× detection of COVI-GAPP/Mishra-anchored illness signatures at a false-alarm cost under 0.1%
+  of healthy windows. No user-visible change ships with this entry; the call-site switch is a
+  separate, opt-in decision pending back-testing on real case histories.
+
 ## 12.0.2 (NoopMod): Home cards follow a sleep edit (Android)
 
 **Today stops showing the pre-edit night**
